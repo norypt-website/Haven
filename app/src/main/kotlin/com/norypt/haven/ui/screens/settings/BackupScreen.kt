@@ -28,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -61,6 +62,15 @@ fun BackupScreen(nav: NavHostController) {
         vm.onFilePicked(uri)
     }
     DisposableEffect(Unit) { onDispose { if (pickerOpen) { pickerOpen = false; container.lockController.endSystemInteraction() } } }
+    // After a restore every list, reminder and task on screen refers to replaced rows. Start over
+    // from Today with an empty back stack so nothing shows the old data or an id that no longer exists.
+    LaunchedEffect(vm.restoredJustNow) {
+        if (vm.restoredJustNow) {
+            kotlinx.coroutines.delay(1_200) // let the "Restored …" line be read
+            vm.restoredJustNow = false
+            nav.navigate(Routes.TODAY) { popUpTo(0) { inclusive = true } }
+        }
+    }
 
     Column(Modifier.fillMaxSize()) {
         HavenTopBar(

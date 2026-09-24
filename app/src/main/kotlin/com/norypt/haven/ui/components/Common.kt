@@ -45,6 +45,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardOptions
 import com.norypt.haven.ui.theme.LocalHavenColors
@@ -163,6 +166,56 @@ fun ConfirmDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+/**
+ * A row of pill-shaped single- or multi-choice options with generous spacing and a clear
+ * selected state (filled, with a check mark). Replaces tightly packed chips in editors.
+ */
+@androidx.compose.runtime.Composable
+fun <T> ChoicePills(
+    options: List<T>,
+    label: (T) -> String,
+    isSelected: (T) -> Boolean,
+    onSelect: (T) -> Unit,
+    modifier: Modifier = Modifier,
+    multiSelect: Boolean = false,
+) {
+    androidx.compose.foundation.layout.FlowRow(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp),
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp),
+    ) {
+        options.forEach { option ->
+            val selected = isSelected(option)
+            val shape = androidx.compose.foundation.shape.RoundedCornerShape(50)
+            androidx.compose.material3.Surface(
+                shape = shape,
+                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+                contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                border = if (selected) null else androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                tonalElevation = if (selected) 0.dp else 1.dp,
+                modifier = Modifier
+                    .heightIn(min = 48.dp)
+                    .selectable(
+                        selected = selected,
+                        role = if (multiSelect) androidx.compose.ui.semantics.Role.Checkbox else androidx.compose.ui.semantics.Role.RadioButton,
+                        onClick = { onSelect(option) },
+                    ),
+            ) {
+                androidx.compose.foundation.layout.Row(
+                    Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                ) {
+                    if (selected) {
+                        Icon(androidx.compose.material.icons.Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                    }
+                    Text(label(option), style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                }
+            }
+        }
+    }
 }
 
 val ScreenPadding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 8.dp)

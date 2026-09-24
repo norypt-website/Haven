@@ -36,7 +36,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.norypt.haven.R
 import com.norypt.haven.ui.LocalAppContainer
-import com.norypt.haven.ui.components.ConfirmDialog
 import com.norypt.haven.ui.components.FactLevel
 import com.norypt.haven.ui.components.FactRow
 import com.norypt.haven.ui.components.PasswordField
@@ -46,12 +45,11 @@ import com.norypt.haven.ui.screens.settings.currentActivity
 import com.norypt.haven.ui.screens.settings.duringSystemInteraction
 
 @Composable
-fun UnlockScreen(onUnlocked: () -> Unit, onAbout: () -> Unit) {
+fun UnlockScreen(onUnlocked: () -> Unit, onAbout: () -> Unit, onForgot: () -> Unit) {
     val container = LocalAppContainer.current
     val vm: UnlockViewModel = viewModel { UnlockViewModel(container) }
     val activity = currentActivity()
     val focus = remember { FocusRequester() }
-    var showEraseConfirm by remember { mutableStateOf(false) }
 
     val deviceAuth: suspend () -> Boolean = {
         val a = activity
@@ -87,11 +85,10 @@ fun UnlockScreen(onUnlocked: () -> Unit, onAbout: () -> Unit) {
                 )
                 Spacer(Modifier.height(12.dp))
                 Button(
-                    onClick = { showEraseConfirm = true },
-                    enabled = !vm.erasing,
+                    onClick = onForgot,
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error, contentColor = MaterialTheme.colorScheme.onError),
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                ) { Text(if (vm.erasing) "Erasing…" else "Erase vault and start over") }
+                ) { Text("Erase vault and start over") }
             }
         } else {
             PasswordField(
@@ -119,24 +116,13 @@ fun UnlockScreen(onUnlocked: () -> Unit, onAbout: () -> Unit) {
                 Text("Unlock")
             }
             Spacer(Modifier.height(8.dp))
-            // Always offered, so it reveals nothing about the vault's state. Without it the only way
-            // out of a forgotten password (or a duress-replaced decoy) is Android's "clear storage".
-            TextButton(onClick = { showEraseConfirm = true }, enabled = !vm.busy && !vm.erasing, modifier = Modifier.heightIn(min = 48.dp)) {
-                Text("Forgot your password? Erase and start over")
-            }
+            // Always offered, so it reveals nothing about the vault's state; the erase itself sits
+            // behind a typed confirmation on the next screen.
+            TextButton(onClick = onForgot, enabled = !vm.busy, modifier = Modifier.heightIn(min = 48.dp)) { Text("Forgot your password?") }
         }
 
         Spacer(Modifier.height(32.dp))
         TextButton(onClick = onAbout, modifier = Modifier.heightIn(min = 48.dp)) { Text("About Haven") }
     }
 
-    if (showEraseConfirm) {
-        ConfirmDialog(
-            title = "Erase the entire Haven vault?",
-            body = "All reminders, tasks, lists, passwords and folders on this device will be deleted and cannot be recovered without a backup. Haven returns to first-run; you can then restore a backup with its passphrase and backup key. Flash storage may retain remnants; this is not a guaranteed wipe.",
-            confirmLabel = "Erase everything",
-            onConfirm = { showEraseConfirm = false; vm.eraseAndStartOver() },
-            onDismiss = { showEraseConfirm = false },
-        )
-    }
 }

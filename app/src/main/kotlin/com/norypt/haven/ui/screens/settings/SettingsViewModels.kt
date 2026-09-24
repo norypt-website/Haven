@@ -372,6 +372,8 @@ class BackupViewModel(private val container: AppContainer) : ViewModel() {
     // Restore
     var restoreUri by mutableStateOf<Uri?>(null)
     var inspection by mutableStateOf<BackupInspection?>(null)
+    /** Set once after a successful restore; the screen then restarts navigation so no screen keeps state from the replaced data. */
+    var restoredJustNow by mutableStateOf(false)
     var inspecting by mutableStateOf(false)
     var restoreMessage by mutableStateOf<String?>(null)
     var restoreOk by mutableStateOf(false)
@@ -526,6 +528,7 @@ class BackupViewModel(private val container: AppContainer) : ViewModel() {
                         restoreOk = true
                         restoreMessage = "Restored ${r.reminders} reminders, ${r.tasks} tasks and ${r.passwords} passwords."
                         restoreUri = null; inspection = null; restoreKeyText = ""
+                        restoredJustNow = true
                     }
                     is RestoreResult.Failure -> restoreMessage = r.message
                 }

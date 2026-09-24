@@ -5,6 +5,7 @@ object Routes {
     const val WELCOME = "welcome"
     const val SETUP = "setup"
     const val UNLOCK = "unlock"
+    const val FORGOT_PASSWORD = "unlock/forgot"
     const val TODAY = "today"
     const val REMINDERS = "reminders"
     const val REMINDER_EDIT = "reminder/edit?id={id}&taskId={taskId}"

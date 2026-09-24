@@ -151,7 +151,7 @@ class UnlockViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
-    /** Erases the whole vault; the root route guard then returns the app to Welcome. */
+    /** Erases the whole vault (the Forgot-password screen is the user-facing path; kept for tests and tooling). */
     fun eraseAndStartOver() {
         if (erasing) return
         erasing = true

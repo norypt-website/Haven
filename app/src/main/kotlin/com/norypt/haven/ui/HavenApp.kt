@@ -30,6 +30,7 @@ import androidx.navigation.navArgument
 import com.norypt.haven.di.AppContainer
 import com.norypt.haven.security.SessionState
 import com.norypt.haven.ui.navigation.Routes
+import com.norypt.haven.ui.screens.onboarding.ForgotPasswordScreen
 import com.norypt.haven.ui.screens.onboarding.SetupScreen
 import com.norypt.haven.ui.screens.onboarding.UnlockScreen
 import com.norypt.haven.ui.screens.onboarding.WelcomeScreen
@@ -84,7 +85,7 @@ fun HavenApp(container: AppContainer, initialOccurrenceId: String?) {
         when (state) {
             is SessionState.Locked, is SessionState.UnrecoverableKeyError -> {
                 val current = nav.currentDestination?.route
-                val publicRoutes = setOf(Routes.WELCOME, Routes.SETUP, Routes.UNLOCK, Routes.ABOUT)
+                val publicRoutes = setOf(Routes.WELCOME, Routes.SETUP, Routes.UNLOCK, Routes.FORGOT_PASSWORD, Routes.ABOUT)
                 if (current != null && current !in publicRoutes) {
                     if (!container.session.isInitialised()) nav.navigate(Routes.WELCOME) { popUpTo(0) { inclusive = true } }
                     else nav.navigate(Routes.UNLOCK) { popUpTo(0) { inclusive = true } }
@@ -173,7 +174,8 @@ fun HavenApp(container: AppContainer, initialOccurrenceId: String?) {
             NavHost(navController = nav, startDestination = start, modifier = Modifier.padding(padding)) {
                 composable(Routes.WELCOME) { WelcomeScreen(onContinue = { nav.navigate(Routes.SETUP) }) }
                 composable(Routes.SETUP) { SetupScreen(onDone = { nav.navigate(Routes.TODAY) { popUpTo(0) { inclusive = true } } }) }
-                composable(Routes.UNLOCK) { UnlockScreen(onUnlocked = { nav.navigate(Routes.TODAY) { popUpTo(0) { inclusive = true } } }, onAbout = { nav.navigate(Routes.ABOUT) }) }
+                composable(Routes.UNLOCK) { UnlockScreen(onUnlocked = { nav.navigate(Routes.TODAY) { popUpTo(0) { inclusive = true } } }, onAbout = { nav.navigate(Routes.ABOUT) }, onForgot = { nav.navigate(Routes.FORGOT_PASSWORD) }) }
+                composable(Routes.FORGOT_PASSWORD) { ForgotPasswordScreen(onErased = { nav.navigate(Routes.WELCOME) { popUpTo(0) { inclusive = true } } }, onBack = { nav.up() }) }
 
                 composable(Routes.TODAY) { TodayScreen(nav) }
                 composable(Routes.REMINDERS) { RemindersScreen(nav) }

@@ -330,7 +330,7 @@ class TodayViewModel(private val container: AppContainer) : ViewModel() {
     data class Upcoming(val reminder: Reminder, val occurrence: Occurrence)
     data class DueTask(val task: TaskEntity, val due: LocalDateTime, val overdue: Boolean)
     /** One day of the "coming up this week" list. */
-    data class WeekDay(val date: LocalDate, val items: List<Upcoming>)
+    data class WeekDay(val date: LocalDate, val items: List<Upcoming>, val tasks: List<DueTask> = emptyList())
 
     sealed interface Starred {
         data class ReminderItem(val reminder: Reminder, val next: Occurrence?) : Starred
@@ -372,21 +372,27 @@ class TodayViewModel(private val container: AppContainer) : ViewModel() {
         .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    /** Occurrences from 24 hours to 7 days ahead, grouped by day, at most 20 in total. */
-    val week: StateFlow<List<WeekDay>> = reminders
-        .map { list ->
+    /** Reminder occurrences from 24 hours to 7 days ahead and open tasks due after today within 7 days, grouped by day. */
+    val week: StateFlow<List<WeekDay>> = kotlinx.coroutines.flow.combine(reminders, tasks) { list, ts ->
             val now = Instant.now()
             val from = now.plus(Duration.ofHours(24))
             val to = now.plus(Duration.ofDays(7))
             val zone = ZoneId.systemDefault()
-            list.filter { it.enabled }.flatMap { r ->
+            val byDay = list.filter { it.enabled }.flatMap { r ->
                 runCatching { container.reminders.nextOccurrences(r, 10, from) }.getOrDefault(emptyList())
                     .filter { !it.instant.isBefore(from) && it.instant.isBefore(to) }
                     .map { Upcoming(r, it) }
             }.sortedBy { it.occurrence.instant }
                 .take(20)
                 .groupBy { it.occurrence.instant.atZone(zone).toLocalDate() }
-                .map { (date, items) -> WeekDay(date, items) }
+            val endOfToday = LocalDate.now().plusDays(1).atStartOfDay()
+            val weekEnd = LocalDate.now().plusDays(7).atStartOfDay()
+            val tasksByDay = ts.filter { !it.completed }.mapNotNull { t ->
+                val due = t.dueLocal?.let { runCatching { LocalDateTime.parse(it) }.getOrNull() } ?: return@mapNotNull null
+                if (!due.isBefore(endOfToday) && due.isBefore(weekEnd)) DueTask(t, due, false) else null
+            }.sortedWith(compareBy<DueTask> { it.due }.thenBy { it.task.title.lowercase() })
+                .groupBy { it.due.toLocalDate() }
+            (byDay.keys + tasksByDay.keys).sorted().map { date -> WeekDay(date, byDay[date].orEmpty(), tasksByDay[date].orEmpty()) }
         }
         .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())

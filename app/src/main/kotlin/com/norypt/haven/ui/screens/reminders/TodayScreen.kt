@@ -179,12 +179,21 @@ fun TodayScreen(nav: NavHostController) {
                     Text("Coming up this week", style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(8.dp))
                     if (week.isEmpty()) {
-                        Text("Nothing else scheduled in the next 7 days.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("No reminders or tasks due in the next 7 days.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     } else {
                         week.forEachIndexed { i, day ->
                             if (i > 0) Spacer(Modifier.height(8.dp))
                             Text(dayHeading(day.date), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             day.items.forEach { u -> UpcomingRow(u, vm, nav, showDate = false) }
+                            day.tasks.forEach { d ->
+                                CompactRow(
+                                    icon = Icons.Filled.RadioButtonUnchecked,
+                                    title = d.task.title,
+                                    detail = "Task · Due " + Fmt.time(d.due.toLocalTime()),
+                                    priority = Priority.of(d.task.priority),
+                                    onClick = { nav.navigate(Routes.taskDetail(d.task.id)) },
+                                )
+                            }
                         }
                     }
                 }

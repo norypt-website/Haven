@@ -28,6 +28,7 @@ import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import com.norypt.haven.ui.components.ChoicePills
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
@@ -218,16 +219,8 @@ fun ScheduleEditor(draft: ScheduleDraft, defaultMinuteOfDay: Int, preview: List<
 
     // ---- Repeat ----
     SectionTitle("Repeat")
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Frequency.entries.forEach { f ->
-            FilterChip(
-                selected = draft.frequency == f,
-                onClick = { draft.frequency = f },
-                label = { Text(frequencyLabel(f)) },
-                modifier = Modifier.heightIn(min = 48.dp),
-            )
-        }
-    }
+    Spacer(Modifier.height(4.dp))
+    ChoicePills(options = Frequency.entries, label = ::frequencyLabel, isSelected = { draft.frequency == it }, onSelect = { draft.frequency = it })
     if (draft.frequency != Frequency.ONCE) {
         Spacer(Modifier.height(8.dp))
         OutlinedTextField(
@@ -244,17 +237,11 @@ fun ScheduleEditor(draft: ScheduleDraft, defaultMinuteOfDay: Int, preview: List<
     if (draft.frequency == Frequency.WEEKLY) {
         Spacer(Modifier.height(8.dp))
         Text("On these days", style = MaterialTheme.typography.labelLarge)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            DayOfWeek.entries.forEach { d ->
-                val on = d in draft.weekdays
-                FilterChip(
-                    selected = on,
-                    onClick = { draft.weekdays = if (on) draft.weekdays - d else draft.weekdays + d },
-                    label = { Text(Fmt.weekday(d)) },
-                    modifier = Modifier.heightIn(min = 48.dp),
-                )
-            }
-        }
+        Spacer(Modifier.height(4.dp))
+        ChoicePills(
+            options = DayOfWeek.entries, label = { Fmt.weekday(it) }, isSelected = { it in draft.weekdays },
+            onSelect = { d -> draft.weekdays = if (d in draft.weekdays) draft.weekdays - d else draft.weekdays + d }, multiSelect = true,
+        )
         if (draft.weekdays.isEmpty()) Help("No day selected: the weekday of the start date (${Fmt.weekday(draft.startDate.dayOfWeek)}) is used.")
     }
     if (draft.showsMonthlyPolicy) {
