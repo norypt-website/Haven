@@ -22,3 +22,6 @@ signing/
 # Internal documentation, verification notes and brand sources stay local.
 /docs/
 /brand/
+
+# Local tool output; never part of the repository.
+/*_runs/
