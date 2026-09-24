@@ -1,0 +1,24 @@
+*.iml
+.gradle/
+/local.properties
+/.idea/
+.DS_Store
+build/
+/captures
+.externalNativeBuild
+.cncb/
+*.apk
+*.aab
+*.ap_
+*.dex
+# Signing material must never enter the repository.
+*.jks
+*.keystore
+*.p12
+*.pem
+keystore.properties
+signing/
+
+# Internal documentation, verification notes and brand sources stay local.
+/docs/
+/brand/

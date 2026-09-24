@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Haven declares NO network permissions. A build check (app/build.gradle.kts) fails the build
+         if any dependency merges android.permission.INTERNET or other network permissions. -->
+
+    <!-- Optional extra factor: device credential / biometric prompt before Keystore unwrap. Normal permission, no runtime prompt. -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <!-- Tapjacking mitigation: Window.setHideOverlayWindows() needs this normal permission. -->
+    <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS" />
+
+    <application
+        android:name=".HavenApplication"
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:localeConfig="@xml/locales_config"
+        android:supportsRtl="true"
+        android:enableOnBackInvokedCallback="true"
+        android:theme="@style/Theme.Haven"
+        tools:ignore="GoogleAppIndexingWarning">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".ui.ring.RingActivity"
+            android:exported="false"
+            android:directBootAware="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:taskAffinity=""
+            android:theme="@style/Theme.Haven" />
+
+        <!-- Library components Haven does not use. Removed so that the only exported components are
+             the launcher activity and the system-broadcast receiver. -->
+        <receiver android:name="androidx.profileinstaller.ProfileInstallReceiver" tools:node="remove" tools:ignore="MissingClass" />
+        <service android:name="androidx.room.MultiInstanceInvalidationService" tools:node="remove" tools:ignore="MissingClass" />
+        <activity android:name="androidx.compose.ui.tooling.PreviewActivity" tools:node="remove" tools:ignore="MissingClass" />
+        <activity android:name="androidx.activity.ComponentActivity" tools:node="remove" tools:ignore="MissingClass" />
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <!-- ProcessLifecycleOwner needs the startup provider; the profile installer does not. -->
+            <meta-data android:name="androidx.profileinstaller.ProfileInstallerInitializer" tools:node="remove" />
+        </provider>
+    </application>
+</manifest>
