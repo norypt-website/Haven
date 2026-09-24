@@ -11,7 +11,7 @@ Reminders that really ring, tasks and a password keeper, encrypted on your phone
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-0B132B)](LICENSE)
 [![Android 12+](https://img.shields.io/badge/Android-12%2B-3DDC84?logo=android&logoColor=white)](#requirements)
 ![No network permission](https://img.shields.io/badge/network-none-1A2540)
-![Tests](https://img.shields.io/badge/unit%20tests-155%20passing-2D9E5F)
+![Tests](https://img.shields.io/badge/unit%20tests-160%20passing-2D9E5F)
 
 <sub>By <a href="https://norypt.com">Norypt</a></sub>
 
@@ -63,7 +63,7 @@ Download the signed APK from the [latest release](https://github.com/norypt-webs
 ```bash
 git clone https://github.com/norypt-website/Haven.git
 cd Haven
-./gradlew testDebugUnitTest :recurrence-engine:test :backup-format:test   # 155 tests
+./gradlew testDebugUnitTest :recurrence-engine:test :backup-format:test   # 160 tests
 ./gradlew assembleDebug                                                    # app/build/outputs/apk/debug/
 ```
 
@@ -83,7 +83,7 @@ Release builds are signed out of tree with a `keystore.properties` that never en
 
 ## Status
 
-Version 0.1.0 is feature-complete for its v1 scope. 155 JVM unit tests and the instrumented
+Version 0.1.0 is feature-complete for its v1 scope. 160 JVM unit tests and the instrumented
 Keystore/SQLCipher suites pass. StrongBox keys, Direct Boot ringing, Doze and battery-saver
 delivery, the duress wipe and the full backup → wipe → restore cycle were verified on a Pixel 9
 running Android 17, and an internal adversarial code review was completed with its findings fixed.

@@ -141,9 +141,9 @@ class VaultSession(
                 if (vaultId == VaultIds.CONTENT) ScheduleSync.syncAll(contentDb!!, alarmRuntime)
                 UnlockResult.Success
             } catch (e: VaultCryptoException.WrongPasswordOrCorrupt) {
-                // Duress check happens only after a real failure, so timing is identical for
-                // "wrong" and "duress". If it matches, everything is replaced by an empty decoy.
-                if (keys.hasDuress() && keys.isDuressPassword(pw)) duressWipe(pw)
+                // Duress check happens only after a real failure and always costs one derivation,
+                // so "wrong", "duress" and "duress not armed" all take the same time.
+                if (keys.isDuressPassword(pw)) duressWipe(pw)
                 throttle.recordFailure()
                 _state.value = previous
                 UnlockResult.WrongPassword(throttle.remainingDelayMs())
@@ -236,7 +236,7 @@ class VaultSession(
         try {
             keys.open(VaultIds.CONTENT, pw).destroy(); true
         } catch (e: VaultCryptoException.WrongPasswordOrCorrupt) {
-            if (keys.hasDuress() && keys.isDuressPassword(pw)) mutex.withLock { duressWipe(pw) }
+            if (keys.isDuressPassword(pw)) mutex.withLock { duressWipe(pw) }
             false
         } catch (e: VaultCryptoException) {
             false

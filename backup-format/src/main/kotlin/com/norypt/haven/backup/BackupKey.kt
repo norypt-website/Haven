@@ -9,6 +9,8 @@ import java.util.Base64
  * second factor required to open a backup; neither factor alone is sufficient.
  *
  * The display form is Crockford-style base32 of the key followed by a one-byte checksum, in
+ * (the checksum only catches typos, about 1 in 256 slip through it; the AEAD key check in the
+ * file is the real test, so this is a usability aid and not a security control)
  * groups of four characters separated by dashes. [parse] tolerates lowercase, missing separators
  * and the common O/0 and I/L/1 confusions.
  *

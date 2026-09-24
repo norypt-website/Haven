@@ -301,6 +301,21 @@ class DuressTest {
         }
     }
 
+    @Test fun wrongPasswordCostsTheSameWhetherOrNotDuressIsArmed() {
+        val kdf = FakeKdf()
+        val m = manager(kdf = kdf)
+        m.initialise(real, params, false).values.forEach { it.destroy() }
+        val before = kdf.calls
+        assertThat(m.isDuressPassword("guess".toByteArray())).isFalse()
+        assertThat(kdf.calls - before).isEqualTo(1) // not armed: still exactly one derivation
+        m.setDuress(real, duress, params)
+        val armed = kdf.calls
+        assertThat(m.isDuressPassword("guess".toByteArray())).isFalse()
+        assertThat(kdf.calls - armed).isEqualTo(1) // armed: also exactly one
+        assertThat(m.hasDuress()).isTrue()
+        m.open(VaultIds.CONTENT, real).destroy() // the dummy derivation touched nothing
+    }
+
     @Test fun clearDuressNeedsRealPassword() {
         val m = manager()
         m.initialise(real, params, false).values.forEach { it.destroy() }

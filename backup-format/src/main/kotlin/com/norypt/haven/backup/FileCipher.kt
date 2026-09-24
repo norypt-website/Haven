@@ -63,6 +63,8 @@ internal object FileCipher {
             keyBytes = key
             val combined = derived + key
             ikm = combined
+            // The same public salt feeds Argon2id and HKDF. RFC 5869 §3.1: an HKDF salt need not be
+            // secret or unique to the extract step; the two uses are independent operations.
             val file = Hkdf.computeHkdf(
                 "HMACSHA256",
                 combined,

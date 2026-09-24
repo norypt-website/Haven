@@ -207,7 +207,7 @@ class BackupManager(private val context: Context, private val session: VaultSess
                     c.taskLists().upsertAll(content.taskLists.map { TaskListEntity(it.id, it.name, it.position, it.createdAtEpochMs) })
                     val listIds = content.taskLists.map { it.id }.toSet()
                     c.tasks().upsertAll(content.tasks.filter { it.listId in listIds }.map { TaskEntity(it.id, it.listId, it.title, it.notes, it.completed, it.completedAtEpochMs, it.dueLocal, it.reminderId, it.position, it.createdAtEpochMs, it.updatedAtEpochMs, it.priority, it.starred, it.followUpMinutes) })
-                    payload.settings.forEach { (k, v) -> if (k.length <= 64 && v.length <= 4096) c.meta().put(VaultMetaEntity(k, v)) }
+                    payload.settings.forEach { (k, v) -> if (isRestorableSetting(k, v)) c.meta().put(VaultMetaEntity(k, v)) }
                 }
                 reminders = content.reminders.size; tasks = content.tasks.size
             }
@@ -251,6 +251,14 @@ class BackupManager(private val context: Context, private val session: VaultSess
         const val MIME = "application/octet-stream"
         const val META_BACKUP_KEY = "backup.key.hex"
         const val META_BACKUP_KEY_VERIFIED = "backup.key.verified"
+
+        /**
+         * Settings a backup may write into the vault. The vault's own backup key and its
+         * "recorded" flag are never taken from a file: a backup that could replace them would let
+         * whoever authored it decide which key protects every later export.
+         */
+        fun isRestorableSetting(key: String, value: String): Boolean =
+            key.length <= 64 && value.length <= 4096 && key != META_BACKUP_KEY && key != META_BACKUP_KEY_VERIFIED
         const val MAX_PAYLOAD = 64 * 1024 * 1024
         /** Providers that are demonstrably local: the Android external-storage provider and the local Downloads provider. */
         val LOCAL_AUTHORITIES: Set<String> = setOf(

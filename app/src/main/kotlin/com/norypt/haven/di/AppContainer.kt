@@ -33,7 +33,11 @@ class AppContainer(val app: Application) {
     val prefs = AppPreferences(app)
     val alarmRuntime: AlarmRuntime = AlarmRuntime.get(app)
     val readiness = AlarmReadiness(app)
-    val throttle = GuessThrottle()
+    val throttle = GuessThrottle(
+        initialFailures = prefs.throttleFailures,
+        initialLockedUntil = prefs.throttleLockedUntil,
+        persist = { failures, until -> prefs.throttleFailures = failures; prefs.throttleLockedUntil = until },
+    )
     val clipboard = SensitiveClipboard(app) { prefs.clipboardClearSeconds * 1000L }
 
     val keyManager = VaultKeyManager(

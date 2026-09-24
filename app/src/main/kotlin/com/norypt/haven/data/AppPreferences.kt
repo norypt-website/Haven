@@ -52,9 +52,19 @@ class AppPreferences(context: Context) {
 
     fun observeTheme(): Flow<ThemeMode> = observe(KEY_THEME) { themeMode }
 
+    /** Wrong-password throttle state (a count and a timestamp, nothing secret). Written synchronously so a kill right after a failure cannot lose it. */
+    var throttleFailures: Int
+        get() = prefs.getInt(KEY_THROTTLE_FAILURES, 0)
+        set(v) { prefs.edit().putInt(KEY_THROTTLE_FAILURES, v).commit() }
+    var throttleLockedUntil: Long
+        get() = prefs.getLong(KEY_THROTTLE_UNTIL, 0L)
+        set(v) { prefs.edit().putLong(KEY_THROTTLE_UNTIL, v).commit() }
+
     fun clearAll() = prefs.edit().clear().apply()
 
     companion object {
+        const val KEY_THROTTLE_FAILURES = "throttle_failures"
+        const val KEY_THROTTLE_UNTIL = "throttle_locked_until"
         const val KEY_THEME = "theme_mode"
         const val KEY_TIMEOUT = "lock_timeout_ms"
         const val KEY_LOCK_BG = "lock_on_background"

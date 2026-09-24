@@ -175,10 +175,18 @@ public class VaultKeyManager(
         store.write(KeyringStore.Keyring(ring.envelopes, ring.createdAtEpochMs, null))
     }
 
-    /** One extra KDF run; call only after the real password already failed. */
+    /**
+     * One extra KDF run; call only after the real password already failed. Always costs one
+     * derivation, whether or not a duress password is armed: otherwise a wrong password would
+     * take twice as long on an armed vault and betray the feature to anyone with a stopwatch.
+     */
     public fun isDuressPassword(password: ByteArray): Boolean {
-        val d = store.read()?.duress ?: return false
-        return d.matches(password, kdf)
+        val ring = store.read() ?: return false
+        val d = ring.duress
+        if (d != null) return d.matches(password, kdf)
+        val reference = ring.envelopes[VaultIds.CONTENT] ?: ring.envelopes.values.firstOrNull() ?: return false
+        Wipe.bytes(kdf.deriveKey(password, DECOY_DURESS_SALT, reference.kdf, 32))
+        return false
     }
 
     /**
@@ -207,6 +215,11 @@ public class VaultKeyManager(
         } finally {
             Wipe.bytes(randomPassword)
         }
+    }
+
+    private companion object {
+        /** Public constant salt for the timing-equalising derivation; its output is discarded. */
+        val DECOY_DURESS_SALT: ByteArray = ByteArray(32) { 0x5A }
     }
 
     /** Full erasure: retire hardware keys and remove the keyring. Database files are the storage layer's job. */
