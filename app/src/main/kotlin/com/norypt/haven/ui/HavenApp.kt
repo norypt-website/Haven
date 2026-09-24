@@ -76,7 +76,10 @@ private val tabs = listOf(
  */
 @Composable
 fun HavenApp(container: AppContainer, initialOccurrenceId: String?) {
-    val nav = rememberNavController()
+    // A new controller whenever the session's databases were closed or replaced: every screen,
+    // saved tab state and view model is rebuilt against the live data (see VaultSession.generation).
+    val generation by container.session.generation.collectAsState()
+    val nav = androidx.compose.runtime.key(generation) { rememberNavController() }
     val state by container.session.state.collectAsState()
     val ringing by container.alarmRuntime.store.occurrences().observeRinging().collectAsState(initial = emptyList())
 
@@ -164,7 +167,7 @@ fun HavenApp(container: AppContainer, initialOccurrenceId: String?) {
             // Decided once. A changing startDestination makes NavHost rebuild its graph and drop the
             // whole back stack, which the transient Unlocking state (e.g. opening the keeper from the
             // restore form) used to trigger. Locking is routed by the LaunchedEffect above instead.
-            val start = remember {
+            val start = remember(generation) {
                 when {
                     !container.session.isInitialised() -> Routes.WELCOME
                     state !is SessionState.Unlocked -> Routes.UNLOCK

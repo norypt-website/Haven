@@ -53,6 +53,16 @@ class VaultSession(
     private val _state = MutableStateFlow<SessionState>(SessionState.Locked)
     val state: StateFlow<SessionState> = _state
 
+    /**
+     * Incremented every time the database connections behind the UI are closed or replaced
+     * (lock, erase, duress, restore). The navigation host is keyed on it, so no screen, saved
+     * tab state or view model can outlive the data it was reading. Compose flows built on a
+     * closed database would otherwise stay silent until the process is restarted.
+     */
+    private val _generation = MutableStateFlow(0)
+    val generation: StateFlow<Int> = _generation
+    private var restoreInProgress = false
+
     @Volatile private var contentDb: ContentDatabase? = null
     @Volatile private var passwordDb: PasswordDatabase? = null
     @Volatile var hardwareLevel: SecurityLevel? = null
@@ -187,6 +197,7 @@ class VaultSession(
             _state.value = SessionState.Locking
             passwordDb?.close(); passwordDb = null
             contentDb?.close(); contentDb = null
+            _generation.value++
             _state.value = SessionState.Locked
         }
         onLocked()
@@ -197,8 +208,9 @@ class VaultSession(
         kotlinx.coroutines.runBlocking { lock() }
     }
 
-    suspend fun beginBackupOperation(restore: Boolean) = mutex.withLock { _state.value = SessionState.BackupOperation(restore) }
+    suspend fun beginBackupOperation(restore: Boolean) = mutex.withLock { restoreInProgress = restore; _state.value = SessionState.BackupOperation(restore) }
     suspend fun endBackupOperation() = mutex.withLock {
+        if (restoreInProgress) { restoreInProgress = false; _generation.value++ }
         _state.value = if (contentDb != null || passwordDb != null) SessionState.Unlocked(contentDb != null, passwordDb != null) else SessionState.Locked
     }
 
@@ -285,6 +297,7 @@ class VaultSession(
         EncryptedDatabaseOpener.deleteDatabaseFiles(ContentDatabase.file(context))
         EncryptedDatabaseOpener.deleteDatabaseFiles(PasswordDatabase.file(context))
         alarmRuntime.scheduler.removeAll()
+        _generation.value++
         val decoy = keys.duressReplaceWithDecoy(duressPassword, params)
         try {
             // Empty decoy databases so the files exist like before.
@@ -313,6 +326,7 @@ class VaultSession(
             alarmRuntime.scheduler.removeAll()
             alarmRuntime.prefs.clearAll()
             alsoClearAppPreferences()
+            _generation.value++
             _state.value = SessionState.Locked
         }
     }

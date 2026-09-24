@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -40,8 +41,9 @@ import java.time.LocalTime
  * closed handle) once the vault is locked. The root guard already redirects to Unlock, so the
  * screens simply stop receiving data instead of crashing.
  */
+/** Built at collection time (not at view-model creation), so a restart after a lock reads the current database. */
 private fun <T> safeFlow(block: () -> Flow<T>): Flow<T> =
-    (try { block() } catch (e: VaultLockedException) { emptyFlow() })
+    kotlinx.coroutines.flow.flow { emitAll(try { block() } catch (e: VaultLockedException) { emptyFlow() }) }
         .catch { e -> if (e !is VaultLockedException && e !is IllegalStateException) throw e }
 
 private fun <T> Flow<T>.asState(vm: ViewModel, initial: T): StateFlow<T> =

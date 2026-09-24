@@ -64,13 +64,7 @@ fun BackupScreen(nav: NavHostController) {
     DisposableEffect(Unit) { onDispose { if (pickerOpen) { pickerOpen = false; container.lockController.endSystemInteraction() } } }
     // After a restore every list, reminder and task on screen refers to replaced rows. Start over
     // from Today with an empty back stack so nothing shows the old data or an id that no longer exists.
-    LaunchedEffect(vm.restoredJustNow) {
-        if (vm.restoredJustNow) {
-            kotlinx.coroutines.delay(1_200) // let the "Restored …" line be read
-            vm.restoredJustNow = false
-            nav.navigate(Routes.TODAY) { popUpTo(0) { inclusive = true } }
-        }
-    }
+    LaunchedEffect(vm.restoredJustNow) { if (vm.restoredJustNow) vm.restoredJustNow = false } // the host is rebuilt by VaultSession.generation
 
     Column(Modifier.fillMaxSize()) {
         HavenTopBar(

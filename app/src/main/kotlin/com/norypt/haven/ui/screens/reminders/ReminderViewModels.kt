@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
@@ -41,8 +42,10 @@ import java.time.ZoneId
  * when the vault is closed, either when the flow is built or mid-collection after a lock. Both are
  * turned into "no data": the root guard is already navigating to the unlock screen.
  */
+/** Built at collection time (not at view-model creation), so a restart after a lock reads the current database. */
 private fun <T> safeFlow(build: () -> Flow<T>): Flow<T> =
-    runCatching(build).getOrElse { emptyFlow() }.catch { e -> if (e !is IllegalStateException) throw e }
+    kotlinx.coroutines.flow.flow { emitAll(runCatching(build).getOrElse { emptyFlow() }) }
+        .catch { e -> if (e !is IllegalStateException) throw e }
 
 private fun ViewModel.io(block: suspend () -> Unit) = viewModelScope.launch { runCatching { withContext(Dispatchers.IO) { block() } } }
 
