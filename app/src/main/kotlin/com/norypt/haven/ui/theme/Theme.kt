@@ -18,10 +18,21 @@ import androidx.compose.ui.unit.sp
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
-/** Semantic colours not covered by Material's scheme. */
-data class HavenExtraColors(val success: androidx.compose.ui.graphics.Color, val warning: androidx.compose.ui.graphics.Color, val danger: androidx.compose.ui.graphics.Color)
+/** Semantic colours not covered by Material's scheme, plus whether the dark scheme is in use. */
+data class HavenExtraColors(
+    val success: androidx.compose.ui.graphics.Color,
+    val warning: androidx.compose.ui.graphics.Color,
+    val danger: androidx.compose.ui.graphics.Color,
+    val starFill: androidx.compose.ui.graphics.Color,
+    val starEdge: androidx.compose.ui.graphics.Color,
+    val passwordSymbol: androidx.compose.ui.graphics.Color,
+    val isDark: Boolean,
+)
 
-val LocalHavenColors = staticCompositionLocalOf { HavenExtraColors(NoryptColors.Success, NoryptColors.Warning, NoryptColors.Danger) }
+private val LightExtras = HavenExtraColors(NoryptColors.Success, NoryptColors.Warning, NoryptColors.Danger, NoryptColors.StarGold, NoryptColors.StarGoldEdge, NoryptColors.PasswordSymbol, isDark = false)
+private val DarkExtras = HavenExtraColors(NoryptColors.SuccessDark, NoryptColors.WarningDark, NoryptColors.DangerDark, NoryptColors.StarGoldDark, NoryptColors.StarGoldDarkEdge, NoryptColors.PasswordSymbolDark, isDark = true)
+
+val LocalHavenColors = staticCompositionLocalOf { LightExtras }
 
 /** Light: white / near-white surfaces, navy text, electric-blue (dark variant) actions. */
 val LightScheme: ColorScheme = lightColorScheme(
@@ -116,9 +127,7 @@ fun HavenTheme(mode: ThemeMode, content: @Composable () -> Unit) {
         ThemeMode.LIGHT -> false
         ThemeMode.DARK -> true
     }
-    val extra = if (dark) HavenExtraColors(NoryptColors.SuccessDark, NoryptColors.WarningDark, NoryptColors.DangerDark)
-    else HavenExtraColors(NoryptColors.Success, NoryptColors.Warning, NoryptColors.Danger)
-    CompositionLocalProvider(LocalHavenColors provides extra) {
+    CompositionLocalProvider(LocalHavenColors provides if (dark) DarkExtras else LightExtras) {
         // Dynamic (wallpaper) colours are intentionally not used: the Norypt palette is the identity.
         MaterialTheme(colorScheme = if (dark) DarkScheme else LightScheme, typography = HavenTypography, shapes = HavenShapes, content = content)
     }

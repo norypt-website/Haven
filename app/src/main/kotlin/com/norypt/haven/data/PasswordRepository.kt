@@ -19,6 +19,7 @@ class PasswordRepository(private val session: VaultSession) {
     fun search(query: String): Flow<List<PasswordEntryEntity>> = entries().search(escapeLike(query))
     fun observeEntry(id: String): Flow<PasswordEntryEntity?> = entries().observe(id)
     fun observeCount(): Flow<Int> = entries().observeCount()
+    fun observeStarredCount(): Flow<Int> = entries().observeStarredCount()
     suspend fun get(id: String): PasswordEntryEntity? = withContext(Dispatchers.IO) { entries().byId(id) }
 
     suspend fun createFolder(name: String): FolderEntity = withContext(Dispatchers.IO) {
@@ -28,15 +29,29 @@ class PasswordRepository(private val session: VaultSession) {
     /** Entries in the folder become unfiled (FK SET NULL), never deleted. */
     suspend fun deleteFolder(id: String) = withContext(Dispatchers.IO) { folders().delete(id) }
 
-    suspend fun create(title: String, website: String, username: String, password: String, notes: String, folderId: String?): PasswordEntryEntity = withContext(Dispatchers.IO) {
+    suspend fun create(
+        title: String, website: String, username: String, password: String, notes: String, folderId: String?,
+        starred: Boolean = false, color: Int = 0,
+    ): PasswordEntryEntity = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
-        val e = PasswordEntryEntity(UUID.randomUUID().toString(), folderId, title.trim(), website.trim(), username, password, notes, now, now)
+        val e = PasswordEntryEntity(UUID.randomUUID().toString(), folderId, title.trim(), website.trim(), username, password, notes, now, now, starred, color)
         entries().upsert(e); e
     }
 
-    suspend fun update(entry: PasswordEntryEntity, title: String, website: String, username: String, password: String, notes: String, folderId: String?) = withContext(Dispatchers.IO) {
-        entries().upsert(entry.copy(title = title.trim(), website = website.trim(), username = username, password = password, notes = notes, folderId = folderId, updatedAt = System.currentTimeMillis()))
+    suspend fun update(
+        entry: PasswordEntryEntity, title: String, website: String, username: String, password: String, notes: String, folderId: String?,
+        starred: Boolean = entry.starred, color: Int = entry.color,
+    ) = withContext(Dispatchers.IO) {
+        entries().upsert(
+            entry.copy(
+                title = title.trim(), website = website.trim(), username = username, password = password, notes = notes, folderId = folderId,
+                starred = starred, color = color, updatedAt = System.currentTimeMillis(),
+            ),
+        )
     }
+
+    /** Starring is not an edit: the entries keep their "updated" time. */
+    suspend fun setStarred(ids: Collection<String>, starred: Boolean) = withContext(Dispatchers.IO) { entries().setStarred(ids.toList(), starred) }
 
     suspend fun delete(id: String) = withContext(Dispatchers.IO) { entries().delete(id) }
     suspend fun deleteMany(ids: Collection<String>) = withContext(Dispatchers.IO) { entries().deleteAll(ids.toList()) }

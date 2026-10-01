@@ -44,6 +44,7 @@ import com.norypt.haven.ui.components.HavenTopBar
 import com.norypt.haven.ui.components.PasswordField
 import com.norypt.haven.ui.components.ScreenPadding
 import com.norypt.haven.ui.components.SectionCard
+import com.norypt.haven.ui.components.SectionLabel
 import com.norypt.haven.ui.navigation.Routes
 import com.norypt.haven.ui.up
 import java.text.DateFormat
@@ -120,9 +121,8 @@ fun BackupScreen(nav: NavHostController) {
 @Composable
 private fun BackupKeySection(vm: BackupViewModel) {
     val container = LocalAppContainer.current
+    SectionLabel("Backup key")
     SectionCard {
-        Text("Backup key", style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.height(4.dp))
         Text(
             "A backup needs BOTH this key and the passphrase you choose. Keep the key somewhere other than the backup file. Norypt cannot recover either.",
             style = MaterialTheme.typography.bodySmall,
@@ -170,8 +170,8 @@ private fun BackupKeySection(vm: BackupViewModel) {
 
 @Composable
 private fun CreateBackupSection(vm: BackupViewModel, nav: NavHostController) {
+    SectionLabel("Create backup")
     SectionCard {
-        Text("Create backup", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(8.dp))
         PasswordField(vm.exportPassphrase, { if (!vm.exporting) vm.exportPassphrase = it }, label = "Backup passphrase", imeAction = ImeAction.Next)
         Spacer(Modifier.height(8.dp))
@@ -205,9 +205,8 @@ private fun CreateBackupSection(vm: BackupViewModel, nav: NavHostController) {
 
 @Composable
 private fun RestoreSection(vm: BackupViewModel, nav: NavHostController, onChooseFile: () -> Unit) {
+    SectionLabel("Restore")
     SectionCard {
-        Text("Restore", style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.height(4.dp))
         Text(
             "Only files on this device's storage are accepted; cloud providers are refused. Restoring replaces what is in this vault.",
             style = MaterialTheme.typography.bodySmall,

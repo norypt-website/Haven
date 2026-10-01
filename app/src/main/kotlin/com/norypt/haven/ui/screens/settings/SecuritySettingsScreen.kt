@@ -23,8 +23,11 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
+import com.norypt.haven.security.EraseAfterFailures
 import com.norypt.haven.security.LockPolicy
 import com.norypt.haven.ui.LocalAppContainer
+import com.norypt.haven.ui.components.PasswordWaitLine
+import com.norypt.haven.ui.components.rememberPasswordWaitMs
 import com.norypt.haven.ui.components.ConfirmDialog
 import com.norypt.haven.ui.components.FactLevel
 import com.norypt.haven.ui.components.FactRow
@@ -32,6 +35,7 @@ import com.norypt.haven.ui.components.HavenTopBar
 import com.norypt.haven.ui.components.PasswordField
 import com.norypt.haven.ui.components.ScreenPadding
 import com.norypt.haven.ui.components.SectionCard
+import com.norypt.haven.ui.components.SectionLabel
 import com.norypt.haven.ui.navigation.Routes
 import com.norypt.haven.ui.up
 
@@ -48,8 +52,8 @@ fun SecuritySettingsScreen(nav: NavHostController) {
             vm.notice?.let { FactRow(FactLevel.INFO, it); Spacer(Modifier.height(8.dp)) }
 
             // (a) Auto-lock
+            SectionLabel("Auto-lock")
             SectionCard {
-                Text("Auto-lock", style = MaterialTheme.typography.titleMedium)
                 Text("Lock after this long without interaction", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(4.dp))
                 LockPolicy.TIMEOUT_CHOICES_MS.forEach { ms ->
@@ -59,34 +63,30 @@ fun SecuritySettingsScreen(nav: NavHostController) {
                 SwitchRow("Lock when the app goes to the background", vm.policy.lockOnBackground, detail = "After a short grace period, so a quick app switch does not force re-entry.") { vm.setLockOnBackground(it) }
                 SwitchRow("Lock when the screen turns off", vm.policy.lockOnScreenOff) { vm.setLockOnScreenOff(it) }
             }
-            Spacer(Modifier.height(12.dp))
 
             // (b) Locked-screen alarm actions
+            SectionLabel("Ringing reminders")
             SectionCard {
-                Text("Ringing reminders", style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(4.dp))
                 SwitchRow(
                     "Allow snooze and dismiss without unlocking Haven",
                     vm.lockedScreenActions,
                     detail = "When on, anyone holding the phone can silence a ringing reminder from the lock screen. They still cannot read it.",
                 ) { vm.updateLockedScreenActions(it) }
             }
-            Spacer(Modifier.height(12.dp))
 
             // (c) Clipboard
+            SectionLabel("Clear copied secrets after")
             SectionCard {
-                Text("Clear copied secrets after", style = MaterialTheme.typography.titleMedium)
                 Text("Clearing cannot retract what another app or a clipboard history already read.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(4.dp))
                 CLIPBOARD_CHOICES.forEach { s ->
                     RadioRow(label = if (s < 60) "$s seconds" else if (s == 60) "1 minute" else "${s / 60} minutes", selected = vm.clipboardSeconds == s) { vm.updateClipboardSeconds(s) }
                 }
             }
-            Spacer(Modifier.height(12.dp))
 
             // (d) Change password, (e) device screen lock
+            SectionLabel("Password")
             SectionCard {
-                Text("Password", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(onClick = vm::openChangePassword, enabled = !vm.busy, modifier = Modifier.heightIn(min = 48.dp)) { Text("Change password") }
                 Spacer(Modifier.height(12.dp))
@@ -97,27 +97,51 @@ fun SecuritySettingsScreen(nav: NavHostController) {
                     detail = "An optional extra step, not a replacement for the password. Changing it re-wraps the vault keys and asks for your Haven password.",
                 ) { vm.beginDeviceAuthChange(it) }
             }
+
+            // (e1) Wrong passwords: longer waits, then the automatic erase
+            SectionLabel("Wrong passwords")
+            SectionCard {
+                Text(
+                    "Each wrong password makes the next try wait longer: 5 s, then 15 s, 30 s, 1 min and up to 30 min. Every Haven password prompt counts, and the right password resets the count.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(10.dp))
+                Text("Erase the vault after", style = MaterialTheme.typography.titleSmall)
+                Spacer(Modifier.height(2.dp))
+                EraseAfterFailures.CHOICES.forEach { n ->
+                    RadioRow(
+                        label = if (n == EraseAfterFailures.DEFAULT) "$n wrong passwords (default)" else "$n wrong passwords",
+                        selected = vm.eraseLimit == n,
+                        enabled = !vm.busy,
+                    ) { vm.chooseEraseLimit(n) }
+                }
+                RadioRow(label = "Never", selected = vm.eraseLimit == EraseAfterFailures.OFF, enabled = !vm.busy) { vm.chooseEraseLimit(EraseAfterFailures.OFF) }
+                Spacer(Modifier.height(4.dp))
+                if (vm.eraseLimit == EraseAfterFailures.OFF) {
+                    FactRow(FactLevel.WARNING, "Automatic erase is off", "Someone holding this phone can keep guessing, slowed only by the waits.")
+                } else {
+                    FactRow(FactLevel.INFO, "Erasing deletes everything in Haven on this phone", "Like \"Forgot your password?\", it returns Haven to first run. Backups you exported are not affected.")
+                }
+            }
             Spacer(Modifier.height(12.dp))
 
             // (e2) Duress password (opt-in)
             DuressPasswordSection(enabled = !vm.busy)
-            Spacer(Modifier.height(12.dp))
 
             // (f) Facts
+            SectionLabel("Key protection")
             SectionCard {
-                Text("Key protection", style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(4.dp))
                 val (lvl, label) = hardwareLevelFact(vm.hardwareLevel)
                 FactRow(lvl, label)
                 vm.envelope?.let { FactRow(FactLevel.INFO, argon2Summary(it.kdf), "Chosen for this device at setup and never lowered automatically.") }
                 FactRow(FactLevel.INFO, "Private content is encrypted on this device")
                 FactRow(FactLevel.INFO, "Norypt cannot recover a lost password or backup key")
             }
-            Spacer(Modifier.height(12.dp))
 
             // (g) Danger zone
+            SectionLabel("Danger zone", color = MaterialTheme.colorScheme.error)
             SectionCard {
-                Text("Danger zone", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.error)
                 Text("Each action asks for your Haven password and then a confirmation that names exactly what is deleted.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(8.dp))
                 DangerButton("Delete all reminders", enabled = !vm.busy) { vm.begin(SecurityViewModel.Action.DELETE_REMINDERS) }
@@ -149,6 +173,11 @@ fun SecuritySettingsScreen(nav: NavHostController) {
         SecurityViewModel.Step.PASSWORD -> PasswordPromptDialog(
             title = when (vm.action) {
                 SecurityViewModel.Action.DEVICE_AUTH -> "Confirm with your password"
+                SecurityViewModel.Action.ERASE_LIMIT -> when {
+                    vm.pendingEraseLimit == EraseAfterFailures.OFF -> "Turn off the automatic erase?"
+                    EraseAfterFailures.isWeaker(vm.eraseLimit, vm.pendingEraseLimit) -> "Allow ${vm.pendingEraseLimit} wrong passwords?"
+                    else -> "Confirm it is you"
+                }
                 else -> "Confirm it is you"
             },
             body = when (vm.action) {
@@ -157,7 +186,21 @@ fun SecuritySettingsScreen(nav: NavHostController) {
                 SecurityViewModel.Action.DELETE_PASSWORDS -> "Deleting all passwords and folders requires your Haven password."
                 SecurityViewModel.Action.ERASE_ALL -> "Erasing the entire vault requires your Haven password."
                 SecurityViewModel.Action.DEVICE_AUTH -> "Changing the device screen lock requirement re-wraps the vault keys and requires your Haven password."
+                SecurityViewModel.Action.ERASE_LIMIT -> when {
+                    vm.pendingEraseLimit == EraseAfterFailures.OFF ->
+                        "Without it, someone holding this phone can keep guessing your password, slowed only by the waits. Enter your Haven password to turn it off."
+                    EraseAfterFailures.isWeaker(vm.eraseLimit, vm.pendingEraseLimit) ->
+                        "More attempts give someone guessing more tries before Haven erases the vault. Enter your Haven password to allow ${vm.pendingEraseLimit}."
+                    else ->
+                        "${wrongPasswords(vm.pendingFailures)} been entered since Haven was last unlocked. Enter your Haven password to clear the count, so the vault is erased only after ${vm.pendingEraseLimit} wrong passwords from now on."
+                }
                 null -> ""
+            },
+            confirmLabel = when {
+                vm.action != SecurityViewModel.Action.ERASE_LIMIT -> "Continue"
+                vm.pendingEraseLimit == EraseAfterFailures.OFF -> "Turn off"
+                EraseAfterFailures.isWeaker(vm.eraseLimit, vm.pendingEraseLimit) -> "Allow ${vm.pendingEraseLimit}"
+                else -> "Erase after ${vm.pendingEraseLimit}"
             },
             busy = vm.busy,
             error = vm.dialogError,
@@ -187,6 +230,8 @@ fun SecuritySettingsScreen(nav: NavHostController) {
     }
 }
 
+private fun wrongPasswords(n: Int): String = if (n == 1) "1 wrong password has" else "$n wrong passwords have"
+
 @Composable
 private fun DangerButton(label: String, enabled: Boolean, onClick: () -> Unit) {
     OutlinedButton(
@@ -199,6 +244,7 @@ private fun DangerButton(label: String, enabled: Boolean, onClick: () -> Unit) {
 
 @Composable
 private fun ChangePasswordDialog(vm: SecurityViewModel) {
+    val waitMs = rememberPasswordWaitMs(LocalAppContainer.current.throttle)
     AlertDialog(
         onDismissRequest = { if (!vm.busy) vm.closeChangePassword() },
         title = { Text("Change password") },
@@ -216,10 +262,11 @@ private fun ChangePasswordDialog(vm: SecurityViewModel) {
                     onDone = vm::changePassword,
                 )
                 vm.changeError?.let { Spacer(Modifier.height(8.dp)); Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
+                PasswordWaitLine(waitMs, Modifier.padding(top = 4.dp))
                 if (vm.busy) BusyRow("Re-wrapping vault keys…")
             }
         },
-        confirmButton = { Button(onClick = vm::changePassword, enabled = !vm.busy) { Text("Change") } },
+        confirmButton = { Button(onClick = vm::changePassword, enabled = !vm.busy && waitMs == 0L) { Text("Change") } },
         dismissButton = { TextButton(onClick = vm::closeChangePassword, enabled = !vm.busy) { Text("Cancel") } },
     )
 }

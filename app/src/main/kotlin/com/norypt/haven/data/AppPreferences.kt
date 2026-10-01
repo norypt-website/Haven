@@ -2,6 +2,7 @@ package com.norypt.haven.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.norypt.haven.security.EraseAfterFailures
 import com.norypt.haven.security.LockPolicy
 import com.norypt.haven.ui.theme.ThemeMode
 import kotlinx.coroutines.channels.awaitClose
@@ -53,12 +54,28 @@ class AppPreferences(context: Context) {
     fun observeTheme(): Flow<ThemeMode> = observe(KEY_THEME) { themeMode }
 
     /** Wrong-password throttle state (a count and a timestamp, nothing secret). Written synchronously so a kill right after a failure cannot lose it. */
-    var throttleFailures: Int
+    val throttleFailures: Int
         get() = prefs.getInt(KEY_THROTTLE_FAILURES, 0)
-        set(v) { prefs.edit().putInt(KEY_THROTTLE_FAILURES, v).commit() }
-    var throttleLockedUntil: Long
+    val throttleLockedUntil: Long
         get() = prefs.getLong(KEY_THROTTLE_UNTIL, 0L)
-        set(v) { prefs.edit().putLong(KEY_THROTTLE_UNTIL, v).commit() }
+
+    /** Saves the count and the lock time in one write, so a kill between them cannot split them. */
+    fun saveThrottle(failures: Int, lockedUntil: Long) {
+        prefs.edit().putInt(KEY_THROTTLE_FAILURES, failures).putLong(KEY_THROTTLE_UNTIL, lockedUntil).commit()
+    }
+
+    /**
+     * Wrong passwords before Haven erases the vault: one of [EraseAfterFailures.CHOICES], or
+     * [EraseAfterFailures.OFF]. Needed while the vault is locked, so it lives here and not in the vault.
+     */
+    var eraseAfterFailures: Int
+        get() = EraseAfterFailures.sanitize(prefs.getInt(KEY_ERASE_AFTER, EraseAfterFailures.DEFAULT))
+        set(v) { prefs.edit().putInt(KEY_ERASE_AFTER, EraseAfterFailures.sanitize(v)).commit() }
+
+    /** Left by the automatic erase so the welcome screen can say what happened; cleared once a new vault exists. */
+    var erasedAfterWrongPasswords: Boolean
+        get() = prefs.getBoolean(KEY_ERASED_NOTICE, false)
+        set(v) { prefs.edit().putBoolean(KEY_ERASED_NOTICE, v).commit() }
 
     fun clearAll() = prefs.edit().clear().apply()
 
@@ -72,5 +89,7 @@ class AppPreferences(context: Context) {
         const val KEY_LOCK_SCREEN_OFF = "lock_on_screen_off"
         const val KEY_DEVICE_AUTH = "require_device_auth"
         const val KEY_CLIP_SECONDS = "clipboard_clear_seconds"
+        const val KEY_ERASE_AFTER = "erase_after_failures"
+        const val KEY_ERASED_NOTICE = "erased_after_wrong_passwords"
     }
 }

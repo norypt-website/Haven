@@ -67,6 +67,7 @@ class SetupViewModel(private val container: AppContainer) : ViewModel() {
                 phase = Phase.Creating
                 container.session.setUp(chars, requireDeviceAuth, bench.params)
                 container.prefs.requireDeviceAuth = requireDeviceAuth
+                container.prefs.erasedAfterWrongPasswords = false
                 password = ""; confirm = ""; suggestion = null
                 phase = Phase.Created(bench.params, container.session.hardwareLevel)
             } catch (e: VaultCryptoException.HardwareKeyUnavailable) {
@@ -98,8 +99,13 @@ class UnlockViewModel(private val container: AppContainer) : ViewModel() {
     var unrecoverable by mutableStateOf<String?>(null)
     /** Seconds the user must wait before the next attempt (0 = none). */
     var waitSeconds by mutableStateOf(0)
+    /** Wrong passwords left before the automatic erase; null when it is off or nothing has gone wrong. */
+    var attemptsLeft by mutableStateOf(container.session.attemptsLeft())
     var erasing by mutableStateOf(false)
     private var countdown: Job? = null
+
+    // A wait left from earlier attempts, even from before the app was restarted, shows at once.
+    init { startCountdown(container.throttle.remainingDelayMs()) }
 
     val canSubmit: Boolean get() = !busy && waitSeconds == 0 && unrecoverable == null && !erasing
 
@@ -122,8 +128,10 @@ class UnlockViewModel(private val container: AppContainer) : ViewModel() {
                 }
                 when (result) {
                     UnlockResult.Success -> onUnlocked()
-                    is UnlockResult.WrongPassword -> { message = "Wrong password."; startCountdown(result.waitMs) }
-                    is UnlockResult.Throttled -> { message = "Too many attempts."; startCountdown(result.waitMs) }
+                    is UnlockResult.WrongPassword -> { message = "Wrong password."; attemptsLeft = result.attemptsLeft; startCountdown(result.waitMs) }
+                    is UnlockResult.Throttled -> { message = "Too many wrong passwords."; startCountdown(result.waitMs) }
+                    // The vault is gone and Haven is back at first run; navigation has moved to Welcome.
+                    UnlockResult.Erased -> Unit
                     UnlockResult.DeviceAuthRequired -> message = "Your device screen lock was not confirmed. Try again."
                     is UnlockResult.Unrecoverable -> unrecoverable = result.reason
                     is UnlockResult.Failed -> message = result.message

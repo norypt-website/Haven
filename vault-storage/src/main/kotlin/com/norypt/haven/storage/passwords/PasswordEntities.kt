@@ -37,6 +37,10 @@ public data class PasswordEntryEntity(
     val notes: String,
     @ColumnInfo(name = "created_at") val createdAt: Long,
     @ColumnInfo(name = "updated_at") val updatedAt: Long,
+    /** Starred entries are listed first. Starring is not an edit: it leaves [updatedAt] alone. */
+    @ColumnInfo(name = "starred", defaultValue = "0") val starred: Boolean = false,
+    /** Tile colour: 0 = automatic (worked out from the title), otherwise a palette id chosen in the editor. */
+    @ColumnInfo(name = "color", defaultValue = "0") val color: Int = 0,
 )
 
 @Dao
@@ -65,14 +69,21 @@ public interface PasswordEntryDao {
     @Query("SELECT * FROM entries WHERE id = :id") public fun observe(id: String): Flow<PasswordEntryEntity?>
     @Upsert public suspend fun upsert(entry: PasswordEntryEntity)
     @Upsert public suspend fun upsertAll(entries: List<PasswordEntryEntity>)
+    @Query("UPDATE entries SET starred = :starred WHERE id IN (:ids)") public suspend fun setStarred(ids: List<String>, starred: Boolean)
     @Query("DELETE FROM entries WHERE id = :id") public suspend fun delete(id: String)
     @Query("DELETE FROM entries WHERE id IN (:ids)") public suspend fun deleteAll(ids: List<String>)
     @Query("DELETE FROM entries") public suspend fun deleteEverything()
     @Query("SELECT COUNT(*) FROM entries") public fun observeCount(): Flow<Int>
+    @Query("SELECT COUNT(*) FROM entries WHERE starred = 1") public fun observeStarredCount(): Flow<Int>
 }
 
 /** The password keeper. A separate file, a separate random key, a separate hardware key. */
-@Database(entities = [FolderEntity::class, PasswordEntryEntity::class], version = 1, exportSchema = true)
+@Database(
+    entities = [FolderEntity::class, PasswordEntryEntity::class],
+    version = 2,
+    exportSchema = true,
+    autoMigrations = [androidx.room.AutoMigration(from = 1, to = 2)],
+)
 public abstract class PasswordDatabase : RoomDatabase() {
     public abstract fun folders(): FolderDao
     public abstract fun entries(): PasswordEntryDao

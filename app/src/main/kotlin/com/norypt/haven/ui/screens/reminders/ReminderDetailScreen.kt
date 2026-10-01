@@ -1,6 +1,36 @@
 package com.norypt.haven.ui.screens.reminders
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material.icons.filled.EventBusy
+import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.TaskAlt
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import com.norypt.haven.ui.components.CardDivider
+import com.norypt.haven.ui.components.DateTile
+import com.norypt.haven.ui.components.EmptyRow
+import com.norypt.haven.ui.components.EntryColor
+import com.norypt.haven.ui.components.FieldRow
+import com.norypt.haven.ui.components.FieldValue
+import com.norypt.haven.ui.components.GroupCard
+import com.norypt.haven.ui.components.GroupPosition
+import com.norypt.haven.ui.components.IconTile
+import com.norypt.haven.ui.components.ItemRow
+import com.norypt.haven.ui.components.PriorityPill
+import com.norypt.haven.ui.components.RowChevron
+import com.norypt.haven.ui.components.RowTextInset
+import com.norypt.haven.ui.components.SectionLabel
+import com.norypt.haven.ui.components.StarredPill
+import com.norypt.haven.ui.components.TagPill
+import com.norypt.haven.ui.components.cardSegment
+import com.norypt.haven.ui.components.color
+import com.norypt.haven.ui.components.tileBrush
+import java.time.ZoneId
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,7 +42,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -20,13 +49,11 @@ import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.AlarmOff
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.HorizontalDivider
 import com.norypt.haven.storage.content.Priority
-import com.norypt.haven.ui.components.PriorityChip
 import com.norypt.haven.ui.components.StarButton
 import com.norypt.haven.ui.components.priorityColor
 import com.norypt.haven.ui.components.priorityLabel
@@ -58,15 +85,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import com.norypt.haven.data.Reminder
 import com.norypt.haven.recurrence.Occurrence
-import com.norypt.haven.recurrence.OccurrenceKey
 import com.norypt.haven.recurrence.Schedule
 import com.norypt.haven.ui.LocalAppContainer
 import com.norypt.haven.ui.components.ConfirmDialog
 import com.norypt.haven.ui.components.EmptyState
 import com.norypt.haven.ui.components.HavenTopBar
-import com.norypt.haven.ui.components.ListSpacing
-import com.norypt.haven.ui.components.ScreenPadding
-import com.norypt.haven.ui.components.SectionCard
 import com.norypt.haven.ui.navigation.Routes
 import com.norypt.haven.ui.up
 import java.time.LocalDate
@@ -87,7 +110,8 @@ fun ReminderDetailScreen(nav: NavHostController, id: String) {
 
     Scaffold(
         topBar = {
-            HavenTopBar("Reminder", onBack = { nav.up() }) {
+            // The header below names the reminder, so the bar carries only the actions.
+            HavenTopBar("", onBack = { nav.up() }) {
                 val current = reminder
                 if (current != null) {
                     StarButton(starred = current.starred, onToggle = { vm.setStarred(!current.starred) })
@@ -111,70 +135,75 @@ fun ReminderDetailScreen(nav: NavHostController, id: String) {
             }
             return@Scaffold
         }
-        LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = ScreenPadding, verticalArrangement = ListSpacing) {
+        LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 24.dp)) {
+            item { ReminderHeader(r, next = occurrences.firstOrNull()) }
             item {
-                SectionCard {
-                    Text(r.title, style = MaterialTheme.typography.headlineSmall)
-                    if (r.notes.isNotBlank()) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(r.notes, style = MaterialTheme.typography.bodyLarge)
-                    }
-                    Spacer(Modifier.height(12.dp))
-                    Text(Fmt.scheduleSummary(r.schedule), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Fmt.earlyOffsets(r.schedule)?.let {
-                        Spacer(Modifier.height(4.dp))
-                        Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    PriorityMenuRow(r.priority, onChange = { vm.setPriority(it) })
-                    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(if (r.enabled) Icons.Filled.Alarm else Icons.Filled.AlarmOff, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
-                        Spacer(Modifier.width(12.dp))
-                        Text(if (r.enabled) "On" else "Off", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                        Switch(
-                            checked = r.enabled,
-                            onCheckedChange = { if (it) vm.setEnabled(true) else confirmDisable = true },
-                            modifier = Modifier.semantics { contentDescription = if (r.enabled) "Reminder on" else "Reminder off" },
-                        )
-                    }
-                }
-            }
-
-            if (tasks.isNotEmpty()) item {
-                SectionCard {
-                    Text("Linked tasks", style = MaterialTheme.typography.titleMedium)
-                    Text("Dismissing this reminder never completes a task.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(4.dp))
-                    tasks.forEach { t ->
-                        Row(
-                            Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable { nav.navigate(Routes.taskDetail(t.id)) },
-                            verticalAlignment = Alignment.CenterVertically,
+                Column {
+                    SectionLabel("Schedule")
+                    GroupCard {
+                        FieldRow(Icons.Filled.Repeat, "Repeats", value = { FieldValue(Fmt.scheduleSummary(r.schedule)) })
+                        Fmt.earlyOffsets(r.schedule)?.let { early ->
+                            CardDivider()
+                            FieldRow(Icons.Filled.NotificationsActive, "Early reminders", value = { FieldValue(early) })
+                        }
+                        CardDivider()
+                        PriorityMenuRow(r.priority, onChange = { vm.setPriority(it) })
+                        CardDivider()
+                        FieldRow(
+                            if (r.enabled) Icons.Filled.Alarm else Icons.Filled.AlarmOff,
+                            "Ringing",
+                            value = { FieldValue(if (r.enabled) "On" else "Off") },
                         ) {
-                            Icon(if (t.completed) Icons.Filled.CheckCircle else Icons.Filled.RadioButtonUnchecked, contentDescription = if (t.completed) "Completed" else "Open", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-                            Spacer(Modifier.width(12.dp))
-                            Text(t.title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                            Text("Open task", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                            Switch(
+                                checked = r.enabled,
+                                onCheckedChange = { if (it) vm.setEnabled(true) else confirmDisable = true },
+                                modifier = Modifier.padding(end = 10.dp).semantics { contentDescription = if (r.enabled) "Reminder on" else "Reminder off" },
+                            )
                         }
                     }
                 }
             }
-
-            item {
-                Spacer(Modifier.height(4.dp))
-                Text("Next occurrences", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 4.dp))
+            if (r.notes.isNotBlank()) item {
+                Column {
+                    SectionLabel("Notes")
+                    GroupCard { Text(r.notes, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(16.dp)) }
+                }
             }
+            if (tasks.isNotEmpty()) item {
+                Column {
+                    SectionLabel("Linked tasks", count = tasks.size)
+                    GroupCard {
+                        tasks.forEachIndexed { i, t ->
+                            if (i > 0) CardDivider(RowTextInset)
+                            ItemRow(
+                                title = t.title,
+                                detail = if (t.completed) "Completed" else "Open",
+                                done = t.completed,
+                                onClick = { nav.navigate(Routes.taskDetail(t.id)) },
+                                leading = { IconTile(if (t.completed) Icons.Filled.CheckCircle else Icons.Filled.TaskAlt, tileBrush(EntryColor.GREEN.color)) },
+                            ) { RowChevron() }
+                        }
+                        Text(
+                            "Dismissing this reminder never completes a task.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+                        )
+                    }
+                }
+            }
+            item { SectionLabel("Next occurrences", count = occurrences.size.takeIf { it > 0 }) }
             if (occurrences.isEmpty()) item {
-                Text(
-                    if (r.enabled) "No future occurrences." else "This reminder is off. Turn it on to see upcoming occurrences.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 4.dp),
-                )
+                GroupCard {
+                    EmptyRow(
+                        if (r.enabled) "No future occurrences." else "This reminder is off. Turn it on to see upcoming occurrences.",
+                        Icons.Filled.EventBusy,
+                    )
+                }
             }
-            items(occurrences, key = { it.key.value }) { o ->
-                OccurrenceRow(o, r, vm, onEditFuture = { editFuture = o })
+            itemsIndexed(occurrences, key = { _, o -> o.key.value }) { i, o ->
+                OccurrenceRow(o, r, vm, GroupPosition.of(i, occurrences.size), onEditFuture = { editFuture = o })
             }
-            item { Spacer(Modifier.height(24.dp)) }
         }
     }
 
@@ -210,8 +239,39 @@ fun ReminderDetailScreen(nav: NavHostController, id: String) {
     }
 }
 
+/** Large tile, title, the next ring and the Starred / priority / on-off labels. */
 @Composable
-private fun OccurrenceRow(o: Occurrence, r: Reminder, vm: ReminderDetailViewModel, onEditFuture: () -> Unit) {
+private fun ReminderHeader(r: Reminder, next: Occurrence?) {
+    Column(Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        ReminderTile(r.priority, r.enabled, size = 76.dp, corner = 22.dp)
+        Spacer(Modifier.height(16.dp))
+        Text(r.title, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center, modifier = Modifier.semantics { heading() })
+        Spacer(Modifier.height(4.dp))
+        Text(
+            when {
+                !r.enabled -> "Off: it will not ring"
+                next != null -> "Next: " + Fmt.occurrence(next, r.schedule)
+                else -> "No future occurrences"
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(14.dp))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (r.starred) StarredPill()
+            PriorityPill(r.priority)
+            TagPill(
+                if (r.enabled) "On" else "Off",
+                large = true,
+                icon = { Icon(if (r.enabled) Icons.Filled.Alarm else Icons.Filled.AlarmOff, contentDescription = null, modifier = Modifier.size(15.dp)) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun OccurrenceRow(o: Occurrence, r: Reminder, vm: ReminderDetailViewModel, position: GroupPosition, onEditFuture: () -> Unit) {
     var menuOpen by remember { mutableStateOf(false) }
     var moveDate: LocalDate? by remember { mutableStateOf(null) }
     var pickDate by remember { mutableStateOf(false) }
@@ -219,12 +279,14 @@ private fun OccurrenceRow(o: Occurrence, r: Reminder, vm: ReminderDetailViewMode
     var confirmEnd by remember { mutableStateOf(false) }
     val moved = o.key in r.schedule.overrides
 
-    SectionCard {
-        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(Fmt.occurrence(o, r.schedule), style = MaterialTheme.typography.bodyLarge)
-                if (moved) Text("Moved from ${Fmt.dateTime(com.norypt.haven.recurrence.OccurrenceKeys.toLocal(o.key))}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+    ItemRow(
+        title = Fmt.occurrence(o, r.schedule),
+        modifier = Modifier.cardSegment(position, MaterialTheme.colorScheme.surface, MaterialTheme.colorScheme.outlineVariant, RowTextInset),
+        detail = if (moved) "Moved from ${Fmt.dateTime(com.norypt.haven.recurrence.OccurrenceKeys.toLocal(o.key))}" else null,
+        titleStyle = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+        leading = { DateTile(o.instant.atZone(ZoneId.systemDefault()).toLocalDate()) },
+    ) {
+        Box {
             SmallIconButton(onClick = { menuOpen = true }, contentDescription = "Options for ${Fmt.relative(o.instant)}", icon = Icons.Filled.MoreVert)
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                 QuickMove.entries.forEach { m ->
@@ -266,17 +328,14 @@ private fun OccurrenceRow(o: Occurrence, r: Reminder, vm: ReminderDetailViewMode
     }
 }
 
-/** Priority shown with icon + label, changed through a small menu. */
+/** Priority shown with its coloured flag and label, changed through a small menu. */
 @Composable
 private fun PriorityMenuRow(value: Priority, onChange: (Priority) -> Unit) {
     var open by remember { mutableStateOf(false) }
-    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(Icons.Filled.Flag, contentDescription = null, tint = priorityColor(value), modifier = Modifier.size(22.dp))
-        Spacer(Modifier.width(12.dp))
-        Text("Priority", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+    FieldRow(Icons.Filled.Flag, "Priority", value = { FieldValue(priorityLabel(value)) }, iconTint = priorityColor(value)) {
         Box {
             TextButton(onClick = { open = true }, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Priority: ${priorityLabel(value)}. Tap to change" }) {
-                Text(priorityLabel(value))
+                Text("Change")
                 Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
             }
             DropdownMenu(expanded = open, onDismissRequest = { open = false }) {

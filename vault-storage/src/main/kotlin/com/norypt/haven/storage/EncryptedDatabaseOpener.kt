@@ -7,6 +7,7 @@ import net.zetetic.database.sqlcipher.SQLiteConnection
 import net.zetetic.database.sqlcipher.SQLiteDatabaseHook
 import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 import java.io.File
+import java.security.SecureRandom
 
 /**
  * Opens Room databases encrypted with SQLCipher (community edition, 4.x defaults:
@@ -97,8 +98,36 @@ public object EncryptedDatabaseOpener {
 
     /** Deletes the database and all sidecar files. Returns true if nothing remains. */
     public fun deleteDatabaseFiles(file: File): Boolean {
-        val names = listOf(file, File(file.path + "-journal"), File(file.path + "-wal"), File(file.path + "-shm"))
+        val names = databaseFiles(file)
         names.forEach { it.delete() }
         return names.none { it.exists() }
     }
+
+    /**
+     * Deletes a database's files and leaves random bytes of the same sizes under the same names.
+     * Without its key an SQLCipher file is indistinguishable from random data, so the folder looks
+     * as it did while the content is gone. Used by the duress response; files that were not there
+     * stay absent.
+     */
+    public fun replaceWithNoise(file: File) {
+        val sizes = databaseFiles(file).associateWith { if (it.exists()) it.length() else -1L }
+        deleteDatabaseFiles(file)
+        val random = SecureRandom()
+        val chunk = ByteArray(64 * 1024)
+        sizes.forEach { (f, size) ->
+            if (size < 0) return@forEach
+            f.outputStream().use { out ->
+                var left = size
+                while (left > 0) {
+                    val n = minOf(left, chunk.size.toLong()).toInt()
+                    random.nextBytes(chunk)
+                    out.write(chunk, 0, n)
+                    left -= n
+                }
+            }
+        }
+    }
+
+    private fun databaseFiles(file: File): List<File> =
+        listOf(file, File(file.path + "-journal"), File(file.path + "-wal"), File(file.path + "-shm"))
 }

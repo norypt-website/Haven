@@ -163,18 +163,23 @@ The body plaintext is a UTF-8 JSON document (`BackupPayload`, `payloadFormat` 1)
 ```
 BackupPayload      { format: 1, content: ContentSnapshot?, passwords: PasswordSnapshot?, settings: {string: string} }
 ContentSnapshot    { reminders: [ReminderRecord], taskLists: [TaskListRecord], tasks: [TaskRecord] }
-ReminderRecord     { id, title, notes, enabled, scheduleJson, createdAtEpochMs, updatedAtEpochMs }
+ReminderRecord     { id, title, notes, enabled, scheduleJson, createdAtEpochMs, updatedAtEpochMs, priority = 0, starred = false }
 TaskListRecord     { id, name, position, createdAtEpochMs }
-TaskRecord         { id, listId, title, notes, completed, completedAtEpochMs?, dueLocal?, reminderId?, position, createdAtEpochMs, updatedAtEpochMs }
+TaskRecord         { id, listId, title, notes, completed, completedAtEpochMs?, dueLocal?, reminderId?, position, createdAtEpochMs, updatedAtEpochMs, priority = 0, starred = false, followUpMinutes? }
 PasswordSnapshot   { folders: [FolderRecord], entries: [PasswordEntryRecord] }
 FolderRecord       { id, name, position }
-PasswordEntryRecord{ id, folderId?, title, website, username, password, notes, createdAtEpochMs, updatedAtEpochMs }
+PasswordEntryRecord{ id, folderId?, title, website, username, password, notes, createdAtEpochMs, updatedAtEpochMs, starred = false, color = 0 }
 ```
+
+Fields written `name = value` were added after the first release: when a backup from an older
+version lacks them they take that value. `priority` is 0 none, 1 low, 2 medium, 3 high. `color`
+is 0 for a colour worked out from the entry title, otherwise a palette id; an id the reader does
+not know is shown as the automatic colour and kept as it is.
 
 `dueLocal` is an ISO-8601 local date-time without offset. Decoding ignores unknown keys so a
 newer app can add fields without breaking older readers; a `format` other than 1 is rejected
 with `UnsupportedVersion`. `BackupPayloadJson.decode(InputStream)` refuses documents larger
-than 256 MiB with `Malformed` before parsing them.
+than 64 MiB with `Malformed` before parsing them.
 
 ## Security properties
 

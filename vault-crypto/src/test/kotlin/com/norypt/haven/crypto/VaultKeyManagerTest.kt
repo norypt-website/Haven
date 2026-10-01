@@ -272,33 +272,58 @@ class DuressTest {
         m.open(VaultIds.CONTENT, real).destroy()
     }
 
-    @Test fun decoyReplacementMakesRealPasswordFailAndRetiresKeys() {
+    @Test fun duressMakesEveryPasswordFailAndRetiresTheKeys() {
         val hw = FakeWrapping()
         val m = manager(hw)
         m.initialise(real, params, false).values.forEach { it.destroy() }
         m.setDuress(real, duress, params)
         val oldAliases = m.keyring()!!.envelopes.values.map { it.hwAlias }
-        val decoy = m.duressReplaceWithDecoy(duress, params)
-        decoy.values.forEach { it.destroy() }
+        m.duressScramble()
         oldAliases.forEach { assertThat(hw.keys).doesNotContainKey(it) }
         assertThat(m.isInitialised()).isTrue() // still looks like a vault
         assertThrows(VaultCryptoException.WrongPasswordOrCorrupt::class.java) { m.open(VaultIds.CONTENT, real) }
-        assertThat(m.isDuressPassword(duress)).isTrue() // re-armed: repeated duress entries behave the same
+        assertThrows(VaultCryptoException.WrongPasswordOrCorrupt::class.java) { m.open(VaultIds.PASSWORDS, real) }
+        assertThrows(VaultCryptoException.WrongPasswordOrCorrupt::class.java) { m.open(VaultIds.CONTENT, duress) }
+        assertThat(m.isDuressPassword(duress)).isTrue() // still armed: repeated duress entries behave the same
     }
 
-    @Test fun decoyMirrorsOriginalKdfCostAndDeviceAuthFlag() {
-        val hw = FakeWrapping()
-        val m = manager(hw)
+    @Test fun theScrambledVaultKeepsItsShape() {
+        val m = manager()
         m.initialise(real, Argon2Params.PROFILE_128M, requireDeviceAuth = true).values.forEach { it.destroy() }
         m.setDuress(real, duress, Argon2Params.PROFILE_128M)
-        // The caller passes a fallback profile; the decoy must still look like the original vault.
-        m.duressReplaceWithDecoy(duress, Argon2Params.RFC9106_MEMORY_CONSTRAINED).values.forEach { it.destroy() }
-        val ring = m.keyring()!!
-        ring.envelopes.values.forEach {
-            assertThat(it.kdf).isEqualTo(Argon2Params.PROFILE_128M)
-            assertThat(it.requiresDeviceAuth).isTrue()
-            assertThat(hw.authRequired).contains(it.hwAlias)
+        val before = m.keyring()!!
+        m.duressScramble()
+        val after = m.keyring()!!
+        assertThat(after.createdAtEpochMs).isEqualTo(before.createdAtEpochMs)
+        assertThat(after.envelopes.keys).isEqualTo(before.envelopes.keys)
+        before.envelopes.forEach { (id, old) ->
+            val new = after.envelopes.getValue(id)
+            // Everything a reader of the key file can see stays as it was, cost and flags included...
+            assertThat(new.copy(salt = old.salt, hwIv = old.hwIv, outer = old.outer)).isEqualTo(old)
+            // ...while the secret parts become new random bytes of the same size.
+            assertThat(new.salt.size).isEqualTo(old.salt.size)
+            assertThat(new.hwIv.size).isEqualTo(old.hwIv.size)
+            assertThat(new.outer.size).isEqualTo(old.outer.size)
+            assertThat(new.salt).isNotEqualTo(old.salt)
+            assertThat(new.outer).isNotEqualTo(old.outer)
         }
+    }
+
+    @Test fun duressCostsNoKeyDerivationAndNoNewKeystoreKeys() {
+        // What makes a duress entry take as long as a wrong password: the wipe itself adds no
+        // Argon2id run and creates no hardware key, it only deletes and overwrites.
+        val hw = FakeWrapping()
+        val kdf = FakeKdf()
+        val m = manager(hw, kdf)
+        m.initialise(real, params, false).values.forEach { it.destroy() }
+        m.setDuress(real, duress, params)
+        val calls = kdf.calls
+        m.duressScramble()
+        assertThat(kdf.calls).isEqualTo(calls)
+        assertThat(hw.keys).isEmpty()
+        m.duressScramble() // again, as a repeated duress entry would: nothing left to retire, still fine
+        assertThat(kdf.calls).isEqualTo(calls)
+        assertThat(m.isDuressPassword(duress)).isTrue()
     }
 
     @Test fun wrongPasswordCostsTheSameWhetherOrNotDuressIsArmed() {

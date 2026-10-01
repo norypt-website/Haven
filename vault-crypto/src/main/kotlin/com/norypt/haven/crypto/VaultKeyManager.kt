@@ -190,32 +190,24 @@ public class VaultKeyManager(
     }
 
     /**
-     * Duress response: retire the hardware keys, delete the keyring, then create a DECOY keyring
-     * (new random vault keys wrapped under a random, discarded password) so the app keeps
-     * looking like a locked vault and every password — including the real one — is simply
-     * "wrong". The duress verifier is re-armed with the same duress password so repeated duress
-     * entries behave identically. Returns the decoy keys so the caller can create empty
-     * database files (the caller destroys them).
+     * Duress response: retire the hardware keys, then replace each envelope's password layer
+     * (salt, hardware IV and outer ciphertext) with random bytes of the same size. No password
+     * opens anything any more, the real one included, and every attempt still fails at the
+     * password layer as "wrong" after the usual derivation. Everything else in the key file stays
+     * as it was (KDF cost, device-auth flag, aliases, sizes, creation time), and so does the duress
+     * verifier, so repeated duress entries behave identically. It runs no key derivation and
+     * creates no Keystore key, so a duress entry takes as long as a wrong password.
      */
-    public fun duressReplaceWithDecoy(duressPassword: ByteArray, params: Argon2Params): Map<String, UnwrappedVaultKey> {
-        val ring = store.read()
-        // The decoy mirrors the real vault's KDF cost and device-auth flag so that neither the
-        // time a (failing) unlock takes nor the stored settings betray that a wipe has happened.
-        val reference = ring?.envelopes?.get(VaultIds.CONTENT) ?: ring?.envelopes?.values?.firstOrNull()
-        val decoyParams = reference?.kdf ?: params
-        val decoyDeviceAuth = reference?.requiresDeviceAuth ?: false
-        ring?.envelopes?.values?.forEach { runCatching { wrapping.delete(it.hwAlias) } }
-        store.delete()
-        val randomPassword = ByteArray(32).also(random::nextBytes)
-        try {
-            val keys = initialise(randomPassword, decoyParams, requireDeviceAuth = decoyDeviceAuth)
-            val fresh = store.read()!!
-            store.write(KeyringStore.Keyring(fresh.envelopes, ring?.createdAtEpochMs ?: clock(), DuressVerifier.create(duressPassword, decoyParams, kdf, random)))
-            return keys
-        } finally {
-            Wipe.bytes(randomPassword)
+    public fun duressScramble() {
+        val ring = store.read() ?: return
+        ring.envelopes.values.forEach { runCatching { wrapping.delete(it.hwAlias) } }
+        val scrambled = ring.envelopes.mapValues { (_, env) ->
+            env.copy(salt = randomBytes(env.salt.size), hwIv = randomBytes(env.hwIv.size), outer = randomBytes(env.outer.size))
         }
+        store.write(KeyringStore.Keyring(scrambled, ring.createdAtEpochMs, ring.duress))
     }
+
+    private fun randomBytes(size: Int): ByteArray = ByteArray(size).also(random::nextBytes)
 
     private companion object {
         /** Public constant salt for the timing-equalising derivation; its output is discarded. */

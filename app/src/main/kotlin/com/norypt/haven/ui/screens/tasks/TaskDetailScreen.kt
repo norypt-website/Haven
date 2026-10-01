@@ -20,7 +20,6 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
@@ -50,14 +49,41 @@ import com.norypt.haven.storage.content.Priority
 import com.norypt.haven.ui.LocalAppContainer
 import com.norypt.haven.ui.components.ConfirmDialog
 import com.norypt.haven.ui.components.HavenTopBar
-import com.norypt.haven.ui.components.PriorityChip
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.Alarm
+import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.TaskAlt
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.sp
+import com.norypt.haven.ui.components.CardDivider
+import com.norypt.haven.ui.components.EmptyRow
+import com.norypt.haven.ui.components.EntryColor
+import com.norypt.haven.ui.components.FieldRow
+import com.norypt.haven.ui.components.FieldValue
+import com.norypt.haven.ui.components.GroupCard
+import com.norypt.haven.ui.components.IconTile
+import com.norypt.haven.ui.components.ItemRow
+import com.norypt.haven.ui.components.PriorityPill
+import com.norypt.haven.ui.components.RowChevron
+import com.norypt.haven.ui.components.RowTextInset
+import com.norypt.haven.ui.components.SectionLabel
+import com.norypt.haven.ui.components.StarredPill
+import com.norypt.haven.ui.components.TagPill
+import com.norypt.haven.ui.components.color
+import com.norypt.haven.ui.components.priorityTileBrush
+import com.norypt.haven.ui.components.tileBrush
+import com.norypt.haven.ui.screens.reminders.ReminderTile
 import com.norypt.haven.ui.components.StarButton
 import com.norypt.haven.ui.components.priorityColor
 import com.norypt.haven.ui.components.priorityLabel
-import com.norypt.haven.ui.components.ScreenPadding
-import com.norypt.haven.ui.components.SectionCard
 import com.norypt.haven.ui.navigation.Routes
-import com.norypt.haven.ui.theme.LocalHavenColors
 import com.norypt.haven.ui.up
 
 private sealed interface DetailDialog {
@@ -84,7 +110,8 @@ fun TaskDetailScreen(nav: NavHostController, id: String) {
 
     Scaffold(
         topBar = {
-            HavenTopBar("Task", onBack = { nav.up() }, actions = {
+            // The header below names the task, so the bar carries only the actions.
+            HavenTopBar("", onBack = { nav.up() }, actions = {
                 val t = ui.task
                 if (t != null) {
                     StarButton(starred = t.starred, onToggle = { vm.setStarred(!t.starred) })
@@ -106,61 +133,82 @@ fun TaskDetailScreen(nav: NavHostController, id: String) {
         }
         val due = task.due()
         val overdue = task.isOverdue()
-        val colors = LocalHavenColors.current
+        val priority = task.priorityEnum()
         // Only trust the linked block once it refers to the reminder the task currently points at.
         val linked = ui.linked?.takeIf { it.reminderId == task.reminderId }
+        val dueText = when {
+            due == null -> "No due date"
+            overdue -> "${formatDateTime(due)} · Overdue"
+            else -> formatDateTime(due)
+        }
 
-        Column(
-            Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(ScreenPadding),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text(
-                task.title,
-                style = MaterialTheme.typography.headlineSmall,
-                textDecoration = if (task.completed) TextDecoration.LineThrough else TextDecoration.None,
-            )
-            if (task.completed) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = colors.success, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Completed" + (task.completedAt?.let { " on ${formatEpochMillis(it)}" } ?: ""), style = MaterialTheme.typography.bodyMedium)
-                }
-            }
-            val priority = task.priorityEnum()
-            if (task.starred || priority != Priority.NONE) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (task.starred) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.Star, contentDescription = null, tint = colors.warning, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("Starred", style = MaterialTheme.typography.bodyMedium)
-                        }
-                    }
-                    PriorityChip(priority)
-                }
-            }
-
-            SectionCard {
-                DetailRow("List", ui.listName ?: "Unknown list")
-                Spacer(Modifier.height(8.dp))
-                DetailRow(
-                    label = "Due",
-                    value = when {
-                        due == null -> "No due date"
-                        overdue -> "${formatDateTime(due)} · Overdue"
-                        else -> formatDateTime(due)
-                    },
-                    emphasise = overdue,
+        Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 24.dp)) {
+            // ---- Header ----
+            Column(Modifier.fillMaxWidth().padding(bottom = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                IconTile(
+                    if (task.completed) Icons.Filled.CheckCircle else Icons.Filled.TaskAlt,
+                    if (task.completed) tileBrush(EntryColor.GREEN.color) else priorityTileBrush(priority),
+                    size = 76.dp,
+                    corner = 22.dp,
                 )
-                Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) { DetailRow("Priority", priorityLabel(priority)) }
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    task.title,
+                    style = MaterialTheme.typography.headlineSmall,
+                    textAlign = TextAlign.Center,
+                    textDecoration = if (task.completed) TextDecoration.LineThrough else TextDecoration.None,
+                    modifier = Modifier.semantics { heading() },
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    when {
+                        task.completed -> "Completed" + (task.completedAt?.let { " on ${formatEpochMillis(it)}" } ?: "")
+                        due == null -> "No due date"
+                        overdue -> "Overdue · was due ${formatDateTime(due)}"
+                        else -> "Due ${formatDateTime(due)}"
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (overdue && !task.completed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(Modifier.height(14.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (task.starred) StarredPill()
+                    PriorityPill(priority)
+                    TagPill(
+                        ui.listName ?: "Unknown list",
+                        large = true,
+                        icon = { Icon(Icons.Filled.Checklist, contentDescription = null, modifier = Modifier.size(15.dp)) },
+                    )
+                }
+            }
+            Spacer(Modifier.height(14.dp))
+            Button(
+                onClick = { vm.setCompleted(!task.completed) },
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                colors = if (task.completed) ButtonDefaults.outlinedButtonColors() else ButtonDefaults.buttonColors(),
+                border = if (task.completed) BorderStroke(1.dp, MaterialTheme.colorScheme.outline) else null,
+            ) {
+                Icon(if (task.completed) Icons.AutoMirrored.Filled.Undo else Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    if (task.completed) "Mark incomplete" else "Mark complete",
+                    style = MaterialTheme.typography.labelLarge.copy(fontSize = 16.sp, fontWeight = FontWeight.SemiBold),
+                )
+            }
+
+            // ---- Details ----
+            SectionLabel("Details")
+            GroupCard {
+                FieldRow(Icons.Filled.Checklist, "List", value = { FieldValue(ui.listName ?: "Unknown list") })
+                CardDivider()
+                FieldRow(Icons.Filled.Event, "Due", value = {
+                    Text(dueText, style = MaterialTheme.typography.bodyLarge, color = if (overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+                })
+                CardDivider()
+                FieldRow(Icons.Filled.Flag, "Priority", value = { FieldValue(priorityLabel(priority)) }, iconTint = priorityColor(priority)) {
                     Box {
-                        OutlinedButton(onClick = { priorityMenu = true }, modifier = Modifier.heightIn(min = 48.dp)) {
-                            Icon(Icons.Filled.Flag, contentDescription = null, tint = priorityColor(priority), modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("Change")
-                        }
+                        TextButton(onClick = { priorityMenu = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Change") }
                         DropdownMenu(expanded = priorityMenu, onDismissRequest = { priorityMenu = false }) {
                             Priority.entries.forEach { p ->
                                 DropdownMenuItem(
@@ -177,17 +225,12 @@ fun TaskDetailScreen(nav: NavHostController, id: String) {
                 }
             }
 
-            SectionCard {
-                Text("If still not done", style = MaterialTheme.typography.titleSmall)
-                Spacer(Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "Follow-up: ${followUpDescription(task.followUpMinutes)}",
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.weight(1f),
-                    )
+            // ---- Follow-up ----
+            SectionLabel("If still not done")
+            GroupCard {
+                FieldRow(Icons.Filled.NotificationsActive, "Follow-up", value = { FieldValue(followUpDescription(task.followUpMinutes)) }) {
                     Box {
-                        OutlinedButton(onClick = { followUpMenu = true }, enabled = due != null, modifier = Modifier.heightIn(min = 48.dp)) { Text("Change") }
+                        TextButton(onClick = { followUpMenu = true }, enabled = due != null, modifier = Modifier.heightIn(min = 48.dp)) { Text("Change") }
                         DropdownMenu(expanded = followUpMenu, onDismissRequest = { followUpMenu = false }) {
                             val choices: List<Int?> = listOf<Int?>(null) + TaskRepository.FOLLOW_UP_CHOICES.map { it.first }
                             choices.forEach { minutes ->
@@ -201,36 +244,26 @@ fun TaskDetailScreen(nav: NavHostController, id: String) {
                         }
                     }
                 }
-                Spacer(Modifier.height(4.dp))
                 Text(
                     if (due == null) "Set a due date to use a follow-up."
                     else "Haven rings again at the chosen time after the due time if the task is still incomplete. Completing the task cancels it.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 14.dp),
                 )
             }
 
-            Button(
-                onClick = { vm.setCompleted(!task.completed) },
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                colors = if (task.completed) ButtonDefaults.outlinedButtonColors() else ButtonDefaults.buttonColors(),
-            ) { Text(if (task.completed) "Mark incomplete" else "Mark complete") }
-
             if (task.notes.isNotBlank()) {
-                SectionCard {
-                    Text("Notes", style = MaterialTheme.typography.titleSmall)
-                    Spacer(Modifier.height(4.dp))
-                    Text(task.notes, style = MaterialTheme.typography.bodyMedium)
-                }
+                SectionLabel("Notes")
+                GroupCard { Text(task.notes, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(16.dp)) }
             }
 
-            SectionCard {
-                Text("Reminder", style = MaterialTheme.typography.titleSmall)
-                Spacer(Modifier.height(4.dp))
+            // ---- Reminder ----
+            SectionLabel("Reminder")
+            GroupCard {
                 when {
-                    task.reminderId == null -> {
+                    task.reminderId == null -> Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("No reminder is linked to this task.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(Modifier.height(8.dp))
                         Button(onClick = { nav.navigate(Routes.reminderEdit(taskId = id)) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                             Text("Add a reminder for this task")
                         }
@@ -238,41 +271,43 @@ fun TaskDetailScreen(nav: NavHostController, id: String) {
                             Text("Link existing reminder…")
                         }
                     }
-                    linked == null -> Text("Loading reminder…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    linked.reminder == null -> {
+                    linked == null -> EmptyRow("Loading reminder…", Icons.Filled.Alarm)
+                    linked.reminder == null -> Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("The linked reminder no longer exists.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(Modifier.height(8.dp))
                         OutlinedButton(onClick = { vm.unlink() }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Unlink") }
                     }
                     else -> {
                         val r = linked.reminder
-                        Text(r.title, style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            when {
+                        ItemRow(
+                            title = r.title,
+                            detail = when {
                                 linked.next != null -> "Next: ${formatOccurrence(linked.next)}"
                                 !r.enabled -> "Reminder is turned off"
                                 else -> "No upcoming occurrence"
                             },
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = { nav.navigate(Routes.reminderDetail(r.id)) }, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("Open reminder") }
+                            onClick = { nav.navigate(Routes.reminderDetail(r.id)) },
+                            leading = { ReminderTile(r.priority, r.enabled) },
+                        ) { RowChevron() }
+                        CardDivider(RowTextInset)
+                        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "Unlinking only removes the connection; the reminder itself stays.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.weight(1f),
+                            )
                             TextButton(onClick = { vm.unlink() }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Unlink") }
                         }
-                        Spacer(Modifier.height(4.dp))
-                        Text("Unlinking only removes the connection; the reminder itself stays.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
 
+            Spacer(Modifier.height(20.dp))
             OutlinedButton(
                 onClick = { dialog = DetailDialog.Delete },
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
             ) { Text("Delete task") }
-            Spacer(Modifier.height(16.dp))
         }
     }
 
@@ -296,13 +331,5 @@ fun TaskDetailScreen(nav: NavHostController, id: String) {
             onDismiss = { dialog = null },
         )
         else -> Unit
-    }
-}
-
-@Composable
-private fun DetailRow(label: String, value: String, emphasise: Boolean = false) {
-    Column {
-        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, style = MaterialTheme.typography.bodyLarge, color = if (emphasise) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
     }
 }

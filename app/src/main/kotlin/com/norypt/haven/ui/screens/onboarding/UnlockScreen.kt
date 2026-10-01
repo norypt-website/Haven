@@ -36,10 +36,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.norypt.haven.R
 import com.norypt.haven.ui.LocalAppContainer
+import com.norypt.haven.ui.components.AttemptsWarning
 import com.norypt.haven.ui.components.FactLevel
 import com.norypt.haven.ui.components.FactRow
 import com.norypt.haven.ui.components.PasswordField
 import com.norypt.haven.ui.components.SectionCard
+import com.norypt.haven.ui.components.waitText
 import com.norypt.haven.ui.screens.settings.confirmDeviceCredential
 import com.norypt.haven.ui.screens.settings.currentActivity
 import com.norypt.haven.ui.screens.settings.duringSystemInteraction
@@ -102,7 +104,11 @@ fun UnlockScreen(onUnlocked: () -> Unit, onAbout: () -> Unit, onForgot: () -> Un
             )
             if (vm.waitSeconds > 0) {
                 Spacer(Modifier.height(4.dp))
-                Text("Try again in ${vm.waitSeconds} s", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Try again in ${waitText(vm.waitSeconds * 1000L)}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            vm.attemptsLeft?.let { left ->
+                Spacer(Modifier.height(12.dp))
+                AttemptsWarning(left)
             }
             Spacer(Modifier.height(16.dp))
             if (vm.busy) {

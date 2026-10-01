@@ -44,6 +44,7 @@ import com.norypt.haven.ui.components.FactRow
 import com.norypt.haven.ui.components.HavenTopBar
 import com.norypt.haven.ui.components.ScreenPadding
 import com.norypt.haven.ui.components.SectionCard
+import com.norypt.haven.ui.components.SectionLabel
 import com.norypt.haven.ui.up
 import java.text.DateFormat
 import java.util.Date
@@ -138,9 +139,8 @@ fun AlarmReadinessScreen(nav: NavHostController) {
                 Spacer(Modifier.height(12.dp))
             }
 
+            SectionLabel("Test alarm")
             SectionCard {
-                Text("Test alarm", style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(4.dp))
                 Text("A test alarm will ring in 10 seconds. Lock the phone to see the lock-screen alert.", style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(8.dp))
                 Button(onClick = vm::testAlarm, enabled = !vm.scheduling, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {

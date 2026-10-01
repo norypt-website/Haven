@@ -1,7 +1,5 @@
 package com.norypt.haven.ui.screens.reminders
 
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,18 +12,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Alarm
-import androidx.compose.material.icons.filled.AlarmOff
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
@@ -53,15 +45,20 @@ import com.norypt.haven.ui.LocalAppContainer
 import com.norypt.haven.ui.components.ConfirmDialog
 import com.norypt.haven.ui.components.EmptyState
 import com.norypt.haven.ui.components.HavenTopBar
-import com.norypt.haven.ui.components.ListSpacing
 import com.norypt.haven.ui.components.PriorityChip
-import com.norypt.haven.ui.components.PriorityStripe
-import com.norypt.haven.ui.theme.LocalHavenColors
-import com.norypt.haven.ui.components.ScreenPadding
-import com.norypt.haven.ui.components.SectionCard
+import com.norypt.haven.ui.components.StarIcon
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.stateDescription
+import com.norypt.haven.ui.components.GroupPosition
+import com.norypt.haven.ui.components.ItemRow
+import com.norypt.haven.ui.components.RowTextInset
+import com.norypt.haven.ui.components.SectionLabel
+import com.norypt.haven.ui.components.SelectedTile
+import com.norypt.haven.ui.components.cardSegment
 import com.norypt.haven.ui.navigation.Routes
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun RemindersScreen(nav: NavHostController) {
     val container = LocalAppContainer.current
@@ -73,6 +70,8 @@ fun RemindersScreen(nav: NavHostController) {
     var menuOpen by remember { mutableStateOf(false) }
     var confirmSelected by remember { mutableStateOf(false) }
     var confirmAll by remember { mutableStateOf(false) }
+    // Rows arrive starred first; the list shows them as their own section.
+    val (starred, others) = remember(rows) { rows.partition { it.reminder.starred } }
 
     Scaffold(
         topBar = {
@@ -107,62 +106,29 @@ fun RemindersScreen(nav: NavHostController) {
                 )
             }
         } else {
-            LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = ScreenPadding, verticalArrangement = ListSpacing) {
-                items(rows, key = { it.reminder.id }) { row ->
-                    val r = row.reminder
-                    val isSelected = r.id in selected
-                    SectionCard(
-                        Modifier.combinedClickable(
-                            onClick = { if (selecting) vm.toggleSelected(r.id) else nav.navigate(Routes.reminderDetail(r.id)) },
-                            onLongClick = { vm.toggleSelected(r.id) },
-                        ).semantics { contentDescription = (if (isSelected) "Selected. " else "") + (if (r.starred) "Starred. " else "") + r.title },
-                    ) {
-                        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
-                            PriorityStripe(r.priority, Modifier.fillMaxHeight())
-                            if (r.priority != com.norypt.haven.storage.content.Priority.NONE) Spacer(Modifier.width(10.dp))
-                            if (selecting) {
-                                Checkbox(checked = isSelected, onCheckedChange = { vm.toggleSelected(r.id) }, modifier = Modifier.size(48.dp))
-                            } else {
-                                Icon(
-                                    if (r.enabled) Icons.Filled.Alarm else Icons.Filled.AlarmOff,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(24.dp),
-                                )
-                            }
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    if (r.starred) {
-                                        Icon(Icons.Filled.Star, contentDescription = "Starred", tint = LocalHavenColors.current.warning, modifier = Modifier.size(18.dp))
-                                        Spacer(Modifier.width(6.dp))
-                                    }
-                                    Text(r.title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f, fill = false))
-                                }
-                                Text(
-                                    when {
-                                        !r.enabled -> "Off"
-                                        row.next != null -> Fmt.occurrence(row.next, r.schedule)
-                                        else -> "No future occurrences"
-                                    },
-                                    style = MaterialTheme.typography.bodyMedium,
-                                )
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Text(Fmt.repeatShort(r.schedule), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    PriorityChip(r.priority)
-                                }
-                            }
-                            if (!selecting) {
-                                Switch(
-                                    checked = r.enabled,
-                                    onCheckedChange = { vm.setEnabled(r.id, it) },
-                                    modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = if (r.enabled) "Reminder on" else "Reminder off" },
-                                )
-                            }
-                        }
-                    }
+            LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 96.dp)) {
+                fun group(list: List<ReminderListViewModel.Row>) = itemsIndexed(list, key = { _, row -> row.reminder.id }) { i, row ->
+                    val id = row.reminder.id
+                    ReminderRow(
+                        row = row,
+                        position = GroupPosition.of(i, list.size),
+                        selecting = selecting,
+                        isSelected = id in selected,
+                        onClick = { if (selecting) vm.toggleSelected(id) else nav.navigate(Routes.reminderDetail(id)) },
+                        onLongClick = { vm.toggleSelected(id) },
+                        onEnabledChange = { vm.setEnabled(id, it) },
+                        modifier = Modifier.animateItem(),
+                    )
                 }
-                item { Spacer(Modifier.height(80.dp)) }
+                // Headers keep position-based keys so a newly starred section is not pushed out of view.
+                if (starred.isNotEmpty()) {
+                    item { SectionLabel("Starred", count = starred.size, leading = { StarIcon(size = 15.dp, contentDescription = null) }) }
+                    group(starred)
+                }
+                if (others.isNotEmpty()) {
+                    item { SectionLabel(if (starred.isEmpty()) "Reminders" else "Other reminders", count = others.size) }
+                    group(others)
+                }
             }
         }
     }
@@ -179,6 +145,51 @@ fun RemindersScreen(nav: NavHostController) {
     }
     if (confirmAll) {
         DeleteAllRemindersDialog(count = rows.size, onConfirm = { confirmAll = false; vm.deleteAll() }, onDismiss = { confirmAll = false })
+    }
+}
+
+@Composable
+private fun ReminderRow(
+    row: ReminderListViewModel.Row,
+    position: GroupPosition,
+    selecting: Boolean,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onEnabledChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val r = row.reminder
+    val scheme = MaterialTheme.colorScheme
+    ItemRow(
+        title = r.title,
+        modifier = modifier
+            .cardSegment(position, fill = if (isSelected) scheme.primaryContainer else scheme.surface, line = scheme.outlineVariant, dividerInset = RowTextInset)
+            .semantics { if (selecting) stateDescription = if (isSelected) "Selected" else "Not selected" },
+        detail = when {
+            !r.enabled -> "Off"
+            row.next != null -> Fmt.occurrence(row.next, r.schedule)
+            else -> "No future occurrences"
+        },
+        detailColor = if (r.enabled && row.next != null) scheme.onSurface else Color.Unspecified,
+        starred = r.starred,
+        onClick = onClick,
+        onLongClick = onLongClick,
+        leading = { if (selecting && isSelected) SelectedTile(contentDescription = null) else ReminderTile(r.priority, r.enabled) },
+        below = {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(Fmt.repeatShort(r.schedule), style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+                PriorityChip(r.priority)
+            }
+        },
+    ) {
+        if (!selecting) {
+            Switch(
+                checked = r.enabled,
+                onCheckedChange = onEnabledChange,
+                modifier = Modifier.padding(end = 8.dp).semantics { contentDescription = if (r.enabled) "Reminder on" else "Reminder off" },
+            )
+        }
     }
 }
 

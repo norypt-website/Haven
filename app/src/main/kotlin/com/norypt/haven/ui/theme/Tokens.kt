@@ -33,4 +33,15 @@ object NoryptColors {
     val WarningDark = Color(0xFFF2B95C)
     val Danger = Color(0xFFC0392B)
     val DangerDark = Color(0xFFFF7B6E)
+
+    // Star: a gold fill with a darker edge, so the shape keeps 3:1 against white and navy
+    val StarGold = Color(0xFFF5B301)
+    val StarGoldEdge = Color(0xFFB7791F)
+    val StarGoldDark = Color(0xFFF7C24A)
+    val StarGoldDarkEdge = Color(0xFFD99A22)
+    val StarGoldText = Color(0xFF7A4E00)   // "Starred" label on a pale gold pill (light theme)
+
+    // Symbols in a shown password (digits use the primary blue)
+    val PasswordSymbol = Color(0xFFC2410C)
+    val PasswordSymbolDark = Color(0xFFFF9F6E)
 }

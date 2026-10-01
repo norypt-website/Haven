@@ -1,11 +1,9 @@
 package com.norypt.haven.ui.screens.tasks
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,17 +25,13 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExtendedFloatingActionButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
@@ -61,9 +55,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.draw.clip
-import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -73,8 +65,18 @@ import com.norypt.haven.ui.LocalAppContainer
 import com.norypt.haven.ui.components.ConfirmDialog
 import com.norypt.haven.ui.components.EmptyState
 import com.norypt.haven.ui.components.HavenTopBar
-import com.norypt.haven.ui.components.ListSpacing
-import com.norypt.haven.ui.components.ScreenPadding
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.ui.graphics.Color
+import com.norypt.haven.ui.components.GroupPosition
+import com.norypt.haven.ui.components.HeroCard
+import com.norypt.haven.ui.components.EntryColor
+import com.norypt.haven.ui.components.color
+import com.norypt.haven.ui.components.ItemRow
+import com.norypt.haven.ui.components.RowTextInset
+import com.norypt.haven.ui.components.SectionLabel
+import com.norypt.haven.ui.components.StarIcon
+import com.norypt.haven.ui.components.cardSegment
 import com.norypt.haven.ui.navigation.Routes
 import kotlinx.coroutines.delay
 
@@ -173,26 +175,15 @@ fun TasksScreen(nav: NavHostController) {
                     )
                     hits == null -> Box(Modifier.fillMaxSize())
                     hits.isEmpty() -> EmptyState(title = "No matching tasks", body = "No task title or notes contain that text.")
-                    else -> LazyColumn(Modifier.fillMaxSize()) {
-                        item {
-                            Text(
-                                "${taskCount(hits.size)} found",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp)) {
+                        item { SectionLabel("${taskCount(hits.size)} found") }
+                        itemsIndexed(hits, key = { _, hit -> hit.task.id }) { i, hit ->
+                            TaskItemRow(
+                                task = hit.task,
+                                position = GroupPosition.of(i, hits.size),
+                                onOpen = { nav.navigate(Routes.taskDetail(hit.task.id)) },
+                                listName = hit.listName,
                             )
-                        }
-                        items(hits, key = { it.task.id }) { hit ->
-                            Row(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .clickable { nav.navigate(Routes.taskDetail(hit.task.id)) }
-                                    .heightIn(min = 56.dp)
-                                    .height(IntrinsicSize.Min)
-                                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) { TaskRowContent(hit.task, modifier = Modifier.weight(1f), listName = hit.listName) }
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         }
                     }
                 }
@@ -205,22 +196,24 @@ fun TasksScreen(nav: NavHostController) {
                     action = { Button(onClick = { dialog = OverviewDialog.NewList }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Create a list") } },
                 )
             }
-            else -> LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = ScreenPadding, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            else -> LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 96.dp)) {
                 item {
                     val open = lists.sumOf { it.open }
                     val overdue = lists.sumOf { it.overdue }
                     val starred = lists.sumOf { it.starred }
                     OverviewHeader(open = open, total = totalTasks, overdue = overdue, starred = starred, lists = lists.size, onNewList = { dialog = OverviewDialog.NewList })
                 }
-                items(lists, key = { it.list.id }) { summary ->
+                item { SectionLabel("Lists", count = lists.size) }
+                itemsIndexed(lists, key = { _, it -> it.list.id }) { i, summary ->
                     ListSummaryRow(
                         summary = summary,
+                        position = GroupPosition.of(i, lists.size),
                         onOpen = { nav.navigate(Routes.taskList(summary.list.id)) },
                         onRename = { dialog = OverviewDialog.Rename(summary.list) },
                         onDelete = { dialog = OverviewDialog.DeleteList(summary) },
+                        modifier = Modifier.animateItem(),
                     )
                 }
-                item { Spacer(Modifier.height(80.dp)) } // keep the last row clear of the FAB
             }
         }
     }
@@ -270,119 +263,101 @@ fun TasksScreen(nav: NavHostController) {
 private fun OverviewHeader(open: Int, total: Int, overdue: Int, starred: Int, lists: Int, onNewList: () -> Unit) {
     val colors = com.norypt.haven.ui.theme.LocalHavenColors.current
     val done = total - open
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-    ) {
-        Column(Modifier.padding(20.dp)) {
-            Row(verticalAlignment = Alignment.Top) {
-                Column(Modifier.weight(1f)) {
-                    Text(if (open == 0) "All clear" else "$open open", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        when {
-                            total == 0 -> "No tasks yet in ${listCount(lists)}"
-                            else -> "$done of ${taskCount(total)} done across ${listCount(lists)}"
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f),
-                    )
-                }
-                TextButton(
-                    onClick = onNewList,
-                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onPrimary),
-                    modifier = Modifier.heightIn(min = 48.dp),
-                ) { Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("New list") }
-            }
-            if (total > 0) {
-                Spacer(Modifier.height(14.dp))
-                androidx.compose.material3.LinearProgressIndicator(
-                    progress = { done.toFloat() / total },
-                    modifier = Modifier.fillMaxWidth().height(8.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(50)),
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    trackColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.25f),
-                    gapSize = 0.dp, drawStopIndicator = {},
+    HeroCard {
+        Row(verticalAlignment = Alignment.Top) {
+            Column(Modifier.weight(1f)) {
+                Text(if (open == 0) "All clear" else "$open open", style = MaterialTheme.typography.headlineMedium, color = Color.White)
+                Text(
+                    when {
+                        total == 0 -> "No tasks yet in ${listCount(lists)}"
+                        else -> "$done of ${taskCount(total)} done across ${listCount(lists)}"
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White.copy(alpha = 0.85f),
                 )
             }
-            if (overdue > 0 || starred > 0) {
-                Spacer(Modifier.height(12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (overdue > 0) Pill("$overdue overdue", colors.warning)
-                    if (starred > 0) Pill("$starred starred", MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.18f))
-                }
+            TextButton(
+                onClick = onNewList,
+                colors = ButtonDefaults.textButtonColors(contentColor = Color.White),
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) { Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("New list") }
+        }
+        if (total > 0) {
+            Spacer(Modifier.height(14.dp))
+            androidx.compose.material3.LinearProgressIndicator(
+                progress = { done.toFloat() / total },
+                modifier = Modifier.fillMaxWidth().height(8.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(50)),
+                color = Color.White,
+                trackColor = Color.White.copy(alpha = 0.25f),
+                gapSize = 0.dp, drawStopIndicator = {},
+            )
+        }
+        if (overdue > 0 || starred > 0) {
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (overdue > 0) Pill("$overdue overdue", EntryColor.ORANGE.color)
+                if (starred > 0) Pill("$starred starred", Color.White.copy(alpha = 0.18f), star = true)
             }
         }
     }
 }
 
 @Composable
-private fun Pill(text: String, background: androidx.compose.ui.graphics.Color) {
-    androidx.compose.material3.Surface(shape = androidx.compose.foundation.shape.RoundedCornerShape(50), color = background, contentColor = MaterialTheme.colorScheme.onPrimary) {
-        Text(text, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+private fun Pill(text: String, background: Color, star: Boolean = false) {
+    androidx.compose.material3.Surface(shape = androidx.compose.foundation.shape.RoundedCornerShape(50), color = background, contentColor = Color.White) {
+        Row(Modifier.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (star) {
+                StarIcon(size = 14.dp, contentDescription = null)
+                Spacer(Modifier.width(5.dp))
+            }
+            Text(text, style = MaterialTheme.typography.labelMedium)
+        }
     }
 }
 
 @Composable
-private fun ListSummaryRow(summary: ListSummary, onOpen: () -> Unit, onRename: () -> Unit, onDelete: () -> Unit) {
+private fun ListSummaryRow(summary: ListSummary, position: GroupPosition, onOpen: () -> Unit, onRename: () -> Unit, onDelete: () -> Unit, modifier: Modifier = Modifier) {
     var menuOpen by remember { mutableStateOf(false) }
     val colors = com.norypt.haven.ui.theme.LocalHavenColors.current
-    Card(
+    ItemRow(
+        title = summary.list.name,
+        modifier = modifier.cardSegment(position, MaterialTheme.colorScheme.surface, MaterialTheme.colorScheme.outlineVariant, RowTextInset),
         onClick = onOpen,
-        modifier = Modifier.fillMaxWidth(),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-    ) {
-        Row(Modifier.fillMaxWidth().heightIn(min = 76.dp).padding(start = 14.dp, end = 4.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            androidx.compose.material3.Surface(
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                contentColor = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(44.dp),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(Icons.Filled.Checklist, contentDescription = null, modifier = Modifier.size(22.dp))
-                }
-            }
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Text(summary.list.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                Spacer(Modifier.height(2.dp))
-                val errorColor = colors.warning
-                Text(
-                    buildAnnotatedString {
-                        when {
-                            summary.total == 0 -> append("No tasks yet")
-                            summary.open == 0 -> append("All ${taskCount(summary.total)} done")
-                            else -> append("${summary.open} open of ${summary.total}")
-                        }
-                        if (summary.starred > 0) append(" · ${summary.starred} starred")
-                        if (summary.overdue > 0) { append(" · "); withStyle(SpanStyle(color = errorColor, fontWeight = FontWeight.Medium)) { append("${summary.overdue} overdue") } }
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+        leading = { ListTile(summary.list.name) },
+        below = {
+            val warn = colors.warning
+            Text(
+                buildAnnotatedString {
+                    when {
+                        summary.total == 0 -> append("No tasks yet")
+                        summary.open == 0 -> append("All ${taskCount(summary.total)} done")
+                        else -> append("${summary.open} open of ${summary.total}")
+                    }
+                    if (summary.starred > 0) append(" · ${summary.starred} starred")
+                    if (summary.overdue > 0) { append(" · "); withStyle(SpanStyle(color = warn, fontWeight = FontWeight.Medium)) { append("${summary.overdue} overdue") } }
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (summary.total > 0) {
+                Spacer(Modifier.height(8.dp))
+                androidx.compose.material3.LinearProgressIndicator(
+                    progress = { summary.completed.toFloat() / summary.total },
+                    modifier = Modifier.fillMaxWidth().height(5.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(50)),
+                    color = if (summary.open == 0) colors.success else MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    gapSize = 0.dp, drawStopIndicator = {},
                 )
-                if (summary.total > 0) {
-                    Spacer(Modifier.height(8.dp))
-                    androidx.compose.material3.LinearProgressIndicator(
-                        progress = { summary.completed.toFloat() / summary.total },
-                        modifier = Modifier.fillMaxWidth().height(5.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(50)),
-                        color = if (summary.open == 0) colors.success else MaterialTheme.colorScheme.primary,
-                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                        gapSize = 0.dp, drawStopIndicator = {},
-                    )
-                }
             }
-            Box {
-                IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(48.dp)) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = "Options for list ${summary.list.name}")
-                }
-                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                    DropdownMenuItem(text = { Text("Rename") }, onClick = { menuOpen = false; onRename() })
-                    DropdownMenuItem(text = { Text("Delete list") }, onClick = { menuOpen = false; onDelete() })
-                }
+        },
+    ) {
+        Box {
+            IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(48.dp)) {
+                Icon(Icons.Filled.MoreVert, contentDescription = "Options for list ${summary.list.name}")
+            }
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                DropdownMenuItem(text = { Text("Rename") }, onClick = { menuOpen = false; onRename() })
+                DropdownMenuItem(text = { Text("Delete list") }, onClick = { menuOpen = false; onDelete() })
             }
         }
     }

@@ -26,6 +26,7 @@ import com.norypt.haven.ui.components.FactRow
 import com.norypt.haven.ui.components.HavenTopBar
 import com.norypt.haven.ui.components.ScreenPadding
 import com.norypt.haven.ui.components.SectionCard
+import com.norypt.haven.ui.components.SectionLabel
 import com.norypt.haven.ui.up
 
 @Composable
@@ -48,9 +49,8 @@ fun AboutScreen(nav: NavHostController) {
                 Text("by Norypt — norypt.com", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
             }
 
+            SectionLabel("What Haven does")
             SectionCard {
-                Text("What Haven does", style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(4.dp))
                 FactRow(FactLevel.OK, "No account required")
                 FactRow(FactLevel.OK, "No internet permission", "Haven never connects to anything. A build check fails if any dependency asks for network access.")
                 FactRow(FactLevel.OK, "Private content is encrypted on this device", "Reminders, tasks and passwords are stored in encrypted databases whose keys need both your password and a key bound to this device.")
@@ -58,11 +58,9 @@ fun AboutScreen(nav: NavHostController) {
                 FactRow(FactLevel.OK, "Manual, local, encrypted backups", "A backup needs both its passphrase and the backup key.")
                 FactRow(FactLevel.INFO, "Norypt cannot recover a lost password or backup key")
             }
-            Spacer(Modifier.height(12.dp))
 
+            SectionLabel("What Haven cannot do")
             SectionCard {
-                Text("What Haven cannot do", style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(4.dp))
                 FactRow(FactLevel.WARNING, "Protect you from a compromised operating system", "Root, a modified bootloader or malware in the OS can see everything while the vault is open.")
                 FactRow(FactLevel.WARNING, "Hide content while it is on screen", "Screenshots and screen recording are blocked, but a malicious keyboard or accessibility service can read what you type or view.")
                 FactRow(FactLevel.WARNING, "Hide alarm timing from the operating system", "When reminders ring, and that Haven is installed, is visible to the OS.")
@@ -70,11 +68,9 @@ fun AboutScreen(nav: NavHostController) {
                 FactRow(FactLevel.WARNING, "Guarantee that deleted data is gone", "Deleting in Haven does not touch backups you exported, and flash storage may retain remnants.")
                 FactRow(FactLevel.WARNING, "Claim an independent security audit", "Automated tests pass, but no independent audit has been performed yet.")
             }
-            Spacer(Modifier.height(12.dp))
 
+            SectionLabel("Open-source components")
             SectionCard {
-                Text("Open-source components", style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(4.dp))
                 Text(
                     "SQLCipher (encrypted SQLite)\nTink (AES-GCM and streaming AEAD)\nArgon2kt (Argon2id key derivation)\nAndroidX and Jetpack Compose (Material 3)\nKotlin coroutines and serialization",
                     style = MaterialTheme.typography.bodyMedium,

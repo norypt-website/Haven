@@ -17,6 +17,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -24,12 +25,16 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.norypt.haven.R
+import com.norypt.haven.ui.LocalAppContainer
 import com.norypt.haven.ui.components.FactLevel
 import com.norypt.haven.ui.components.FactRow
 import com.norypt.haven.ui.components.SectionCard
 
 @Composable
 fun WelcomeScreen(onContinue: () -> Unit) {
+    val container = LocalAppContainer.current
+    // Read once: the note stays until a new vault has been set up.
+    val erasedAfterWrongPasswords = remember { container.prefs.erasedAfterWrongPasswords }
     Column(
         Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -58,6 +63,16 @@ fun WelcomeScreen(onContinue: () -> Unit) {
             textAlign = TextAlign.Center,
         )
         Spacer(Modifier.height(28.dp))
+        if (erasedAfterWrongPasswords) {
+            SectionCard {
+                FactRow(
+                    FactLevel.WARNING,
+                    "Haven erased the previous vault",
+                    "Too many wrong passwords were entered. If you made a backup, set up Haven again and restore it from Settings, Backup and restore.",
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+        }
         SectionCard {
             FactRow(FactLevel.OK, "No account required")
             FactRow(FactLevel.OK, "No internet permission")

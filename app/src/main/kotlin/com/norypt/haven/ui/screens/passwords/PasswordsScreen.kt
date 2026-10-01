@@ -11,17 +11,19 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
@@ -29,23 +31,22 @@ import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.outlined.Circle
+import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -60,6 +61,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
@@ -69,6 +74,12 @@ import com.norypt.haven.ui.LocalAppContainer
 import com.norypt.haven.ui.components.ConfirmDialog
 import com.norypt.haven.ui.components.EmptyState
 import com.norypt.haven.ui.components.HavenTopBar
+import com.norypt.haven.ui.components.GroupPosition
+import com.norypt.haven.ui.components.PillChip
+import com.norypt.haven.ui.components.SectionLabel
+import com.norypt.haven.ui.components.SelectedTile
+import com.norypt.haven.ui.components.cardSegment
+import com.norypt.haven.ui.components.StarIcon
 import com.norypt.haven.ui.navigation.Routes
 import kotlinx.coroutines.launch
 
@@ -94,6 +105,7 @@ private fun PasswordsContent(nav: NavHostController) {
     val vm = rememberPasswordsListViewModel(container)
     val folders by vm.folders.collectAsState()
     val entries by vm.entries.collectAsState()
+    val totals by vm.totals.collectAsState()
     val filter by vm.filter.collectAsState()
     val selected by vm.selected.collectAsState()
     val scope = rememberCoroutineScope()
@@ -111,17 +123,25 @@ private fun PasswordsContent(nav: NavHostController) {
     BackHandler(enabled = selectionMode) { vm.clearSelection() }
 
     val folderNames = remember(folders) { folders.associate { it.id to it.name } }
-    val currentFolder = (filter as? FolderFilter.Folder)?.let { f -> folders.firstOrNull { it.id == f.id } }
+    val currentFolder = (filter as? ListFilter.Folder)?.let { f -> folders.firstOrNull { it.id == f.id } }
+    val sections = remember(entries) { sectionsOf(entries) }
+    // Inside a folder every row is in that folder, so its tag would only repeat the chip.
+    val showFolderTags = filter !is ListFilter.Folder
 
     Scaffold(
         topBar = {
             if (selectionMode) {
+                val starAction = starTargetFor(entries.filter { it.id in selected })
                 TopAppBar(
                     title = { Text("${selected.size} selected", style = MaterialTheme.typography.titleLarge) },
                     navigationIcon = {
                         IconButton(onClick = { vm.clearSelection() }, modifier = Modifier.size(48.dp)) { Icon(Icons.Filled.Close, contentDescription = "Clear selection") }
                     },
                     actions = {
+                        IconButton(onClick = { vm.starSelected() }, modifier = Modifier.size(48.dp)) {
+                            if (starAction) Icon(Icons.Outlined.StarBorder, contentDescription = "Star selected")
+                            else StarIcon(size = 24.dp, contentDescription = "Remove star from selected")
+                        }
                         IconButton(onClick = { dialog = ListDialog.MoveSelected }, modifier = Modifier.size(48.dp)) { Icon(Icons.Filled.Folder, contentDescription = "Move to folder") }
                         IconButton(onClick = { dialog = ListDialog.DeleteSelected }, modifier = Modifier.size(48.dp)) { Icon(Icons.Filled.Delete, contentDescription = "Delete selected") }
                     },
@@ -144,7 +164,11 @@ private fun PasswordsContent(nav: NavHostController) {
                             leadingIcon = { Icon(Icons.Filled.Key, contentDescription = null) },
                             onClick = { menuOpen = false; nav.navigate(Routes.PASSWORD_GENERATOR) },
                         )
-                        DropdownMenuItem(text = { Text("New folder…") }, onClick = { menuOpen = false; dialog = ListDialog.NewFolder })
+                        DropdownMenuItem(
+                            text = { Text("New folder…") },
+                            leadingIcon = { Icon(Icons.Filled.Add, contentDescription = null) },
+                            onClick = { menuOpen = false; dialog = ListDialog.NewFolder },
+                        )
                         if (currentFolder != null) {
                             HorizontalDivider()
                             DropdownMenuItem(text = { Text("Rename folder…") }, onClick = { menuOpen = false; dialog = ListDialog.RenameFolder(currentFolder) })
@@ -166,43 +190,13 @@ private fun PasswordsContent(nav: NavHostController) {
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                singleLine = true,
-                placeholder = { Text("Search titles, websites, usernames") },
-                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                trailingIcon = {
-                    if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Filled.Close, contentDescription = "Clear search") }
-                },
-                keyboardOptions = KeyboardOptions(autoCorrectEnabled = false),
-            )
-            Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                FilterChip(selected = filter == FolderFilter.All, onClick = { vm.setFilter(FolderFilter.All) }, label = { Text("All") })
-                FilterChip(selected = filter == FolderFilter.Unfiled, onClick = { vm.setFilter(FolderFilter.Unfiled) }, label = { Text("Unfiled") })
-                folders.forEach { f ->
-                    FilterChip(
-                        selected = (filter as? FolderFilter.Folder)?.id == f.id,
-                        onClick = { vm.setFilter(FolderFilter.Folder(f.id)) },
-                        label = { Text(f.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    )
-                }
-                FilterChip(
-                    selected = false,
-                    onClick = { dialog = ListDialog.NewFolder },
-                    label = { Text("New folder") },
-                    leadingIcon = { Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                )
-            }
-            Spacer(Modifier.height(4.dp))
+            SearchField(query = query, onQueryChange = { query = it })
+            FilterRow(filter = filter, totals = totals, folders = folders, onPick = { vm.setFilter(it) })
             if (entries.isEmpty()) {
                 when {
                     query.isNotBlank() -> EmptyState("Nothing matches", "No entry title, website or username contains that text.")
-                    filter != FolderFilter.All -> EmptyState("This folder is empty", "Long-press entries in the list to move them here.")
+                    filter == ListFilter.Starred -> EmptyState("No starred passwords", "Open an entry and tap the star to keep it at the top.")
+                    filter != ListFilter.All -> EmptyState("This folder is empty", "Long-press entries in the list to move them here.")
                     else -> EmptyState(
                         "No passwords yet",
                         "Entries are kept only in this vault on this device.",
@@ -210,17 +204,35 @@ private fun PasswordsContent(nav: NavHostController) {
                     )
                 }
             } else {
-                LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
-                    items(entries, key = { it.id }) { entry ->
-                        EntryRow(
-                            entry = entry,
-                            folderName = entry.folderId?.let { folderNames[it] },
-                            selectionMode = selectionMode,
-                            selected = entry.id in selected,
-                            onClick = { if (selectionMode) vm.toggleSelected(entry.id) else nav.navigate(Routes.passwordDetail(entry.id)) },
-                            onLongClick = { vm.toggleSelected(entry.id) },
-                        )
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 96.dp)) {
+                    fun group(list: List<PasswordEntryEntity>) = entryGroup(
+                        entries = list,
+                        folderNames = if (showFolderTags) folderNames else emptyMap(),
+                        selectionMode = selectionMode,
+                        selected = selected,
+                        onOpen = { nav.navigate(Routes.passwordDetail(it.id)) },
+                        onToggle = { vm.toggleSelected(it.id) },
+                    )
+                    // Headers keep position-based keys on purpose: the list holds on to the key of its
+                    // first visible item, so a fixed header key would keep "Other entries" in place and
+                    // push a newly appearing Starred section out of view above it. Rows keep their ids.
+                    if (sections.starred.isNotEmpty()) {
+                        item {
+                            SectionLabel(
+                                "Starred",
+                                count = sections.starred.size,
+                                description = "Starred, ${entryCount(sections.starred.size)}",
+                                leading = { StarIcon(size = 15.dp, contentDescription = null) },
+                            )
+                        }
+                        group(sections.starred)
+                    }
+                    if (sections.others.isNotEmpty()) {
+                        item {
+                            val title = if (sections.starred.isEmpty()) "Entries" else "Other entries"
+                            SectionLabel(title, count = sections.others.size, description = "$title, ${entryCount(sections.others.size)}")
+                        }
+                        group(sections.others)
                     }
                 }
             }
@@ -231,7 +243,7 @@ private fun PasswordsContent(nav: NavHostController) {
         ListDialog.None -> Unit
         ListDialog.NewFolder -> FolderNameDialog(
             title = "New folder", initial = "", confirmLabel = "Create",
-            onConfirm = { name -> dialog = ListDialog.None; vm.createFolder(name) { vm.setFilter(FolderFilter.Folder(it.id)) } },
+            onConfirm = { name -> dialog = ListDialog.None; vm.createFolder(name) { vm.setFilter(ListFilter.Folder(it.id)) } },
             onDismiss = { dialog = ListDialog.None },
         )
         is ListDialog.RenameFolder -> FolderNameDialog(
@@ -272,39 +284,121 @@ private fun PasswordsContent(nav: NavHostController) {
     }
 }
 
+@Composable
+private fun SearchField(query: String, onQueryChange: (String) -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    val focus = LocalFocusManager.current
+    OutlinedTextField(
+        value = query,
+        onValueChange = onQueryChange,
+        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 4.dp),
+        singleLine = true,
+        shape = RoundedCornerShape(50),
+        placeholder = { Text("Search titles, websites, usernames", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+        trailingIcon = {
+            if (query.isNotEmpty()) IconButton(onClick = { onQueryChange("") }) { Icon(Icons.Filled.Close, contentDescription = "Clear search") }
+        },
+        keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, imeAction = ImeAction.Search),
+        keyboardActions = KeyboardActions(onSearch = { focus.clearFocus() }),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = scheme.surface,
+            unfocusedContainerColor = scheme.surface,
+            focusedBorderColor = scheme.primary,
+            unfocusedBorderColor = scheme.outlineVariant,
+        ),
+    )
+}
+
+/** All, Starred, each folder, Unfiled. One row that scrolls sideways; the selected chip is filled. */
+@Composable
+private fun FilterRow(filter: ListFilter, totals: EntryTotals, folders: List<FolderEntity>, onPick: (ListFilter) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        PillChip(filter == ListFilter.All, { onPick(ListFilter.All) }, "All", count = totals.all)
+        PillChip(filter == ListFilter.Starred, { onPick(ListFilter.Starred) }, "Starred", count = totals.starred) {
+            StarIcon(size = 17.dp, contentDescription = null)
+        }
+        folders.forEach { f ->
+            PillChip((filter as? ListFilter.Folder)?.id == f.id, { onPick(ListFilter.Folder(f.id)) }, f.name) {
+                Icon(Icons.Filled.Folder, contentDescription = null, modifier = Modifier.size(16.dp))
+            }
+        }
+        PillChip(filter == ListFilter.Unfiled, { onPick(ListFilter.Unfiled) }, "Unfiled")
+    }
+}
+
+private fun LazyListScope.entryGroup(
+    entries: List<PasswordEntryEntity>,
+    folderNames: Map<String, String>,
+    selectionMode: Boolean,
+    selected: Set<String>,
+    onOpen: (PasswordEntryEntity) -> Unit,
+    onToggle: (PasswordEntryEntity) -> Unit,
+) {
+    itemsIndexed(entries, key = { _, e -> e.id }) { index, entry ->
+        EntryRow(
+            entry = entry,
+            position = GroupPosition.of(index, entries.size),
+            folderName = entry.folderId?.let { folderNames[it] },
+            selectionMode = selectionMode,
+            selected = entry.id in selected,
+            onClick = { if (selectionMode) onToggle(entry) else onOpen(entry) },
+            onLongClick = { onToggle(entry) },
+            modifier = Modifier.animateItem(),
+        )
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun EntryRow(
     entry: PasswordEntryEntity,
+    position: GroupPosition,
     folderName: String?,
     selectionMode: Boolean,
     selected: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Surface(
-        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.background,
-        modifier = Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick),
+    val scheme = MaterialTheme.colorScheme
+    Row(
+        modifier
+            .fillMaxWidth()
+            .cardSegment(position, fill = if (selected) scheme.primaryContainer else scheme.surface, line = scheme.outlineVariant, dividerInset = 72.dp)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .heightIn(min = 72.dp)
+            .padding(start = 14.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (selectionMode) {
-                Icon(
-                    if (selected) Icons.Filled.CheckCircle else Icons.Outlined.Circle,
-                    contentDescription = if (selected) "Selected" else "Not selected",
-                    tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(24.dp),
+        if (selectionMode && selected) SelectedTile(size = 44.dp, corner = 13.dp)
+        else EntryTile(entry.title, entry.color, size = 44.dp, corner = 13.dp, contentDescription = if (selectionMode) "Not selected" else null)
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    entry.title.ifBlank { "Untitled" },
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
                 )
-                Spacer(Modifier.width(16.dp))
-            }
-            Column(Modifier.weight(1f)) {
-                Text(entry.title.ifBlank { "Untitled" }, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (entry.username.isNotBlank()) {
-                    Text(entry.username, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-                if (folderName != null) {
-                    Text(folderName, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (entry.starred) {
+                    Spacer(Modifier.width(6.dp))
+                    StarIcon(size = 17.dp)
                 }
             }
+            val detail = entry.username.ifBlank { entry.website }
+            if (detail.isNotBlank()) {
+                Text(detail, style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        if (folderName != null) {
+            Spacer(Modifier.width(8.dp))
+            FolderTag(folderName)
         }
     }
 }
@@ -355,3 +449,5 @@ private fun FolderChoice(label: String, onClick: () -> Unit) {
         Text(label, modifier = Modifier.fillMaxWidth(), maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
+
+private fun entryCount(n: Int) = if (n == 1) "1 entry" else "$n entries"

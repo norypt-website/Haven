@@ -1,18 +1,13 @@
 package com.norypt.haven.ui.screens.tasks
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -28,15 +23,12 @@ import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -60,8 +52,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
@@ -71,9 +61,36 @@ import com.norypt.haven.ui.LocalAppContainer
 import com.norypt.haven.ui.components.ConfirmDialog
 import com.norypt.haven.ui.components.EmptyState
 import com.norypt.haven.ui.components.HavenTopBar
-import com.norypt.haven.ui.components.PriorityChip
-import com.norypt.haven.ui.components.PriorityStripe
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import com.norypt.haven.ui.components.ColorTile
+import com.norypt.haven.ui.components.EntryColor
+import com.norypt.haven.ui.components.GroupCard
+import com.norypt.haven.ui.components.GroupPosition
+import com.norypt.haven.ui.components.ItemRow
+import com.norypt.haven.ui.components.PillChip
+import com.norypt.haven.ui.components.RoundCheck
+import com.norypt.haven.ui.components.RowTextInset
+import com.norypt.haven.ui.components.cardSegment
+import com.norypt.haven.ui.components.color
+import com.norypt.haven.ui.components.entryInitials
+import com.norypt.haven.ui.components.priorityColor
+import com.norypt.haven.ui.components.tileBrush
 import com.norypt.haven.ui.theme.LocalHavenColors
+import com.norypt.haven.ui.components.PriorityChip
+import com.norypt.haven.ui.components.StarIcon
 import com.norypt.haven.ui.navigation.Routes
 import com.norypt.haven.ui.up
 import java.time.LocalDateTime
@@ -186,18 +203,6 @@ fun TaskListScreen(nav: NavHostController, listId: String) {
                         }
                     }
                     Box {
-                        IconButton(onClick = { filterMenu = true }, modifier = Modifier.size(48.dp)) { Icon(Icons.Filled.FilterList, contentDescription = "Filter: ${filter.label}") }
-                        DropdownMenu(expanded = filterMenu, onDismissRequest = { filterMenu = false }) {
-                            TaskFilter.entries.forEach { option ->
-                                DropdownMenuItem(
-                                    text = { Text(option.label) },
-                                    leadingIcon = { if (option == filter) Icon(Icons.Filled.Check, contentDescription = "Current") else Spacer(Modifier.size(24.dp)) },
-                                    onClick = { filter = option; filterMenu = false },
-                                )
-                            }
-                        }
-                    }
-                    Box {
                         IconButton(onClick = { moreMenu = true }, modifier = Modifier.size(48.dp)) { Icon(Icons.Filled.MoreVert, contentDescription = "More options") }
                         DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
                             DropdownMenuItem(
@@ -215,7 +220,7 @@ fun TaskListScreen(nav: NavHostController, listId: String) {
             if (searchOpen) {
                 OutlinedTextField(
                     value = query,
-                    onValueChange = { query = it },
+                    onValueChange = { query = it; selected = emptySet() },
                     label = { Text("Search in this list") },
                     placeholder = { Text("Title or notes") },
                     singleLine = true,
@@ -232,25 +237,47 @@ fun TaskListScreen(nav: NavHostController, listId: String) {
             OutlinedTextField(
                 value = newTitle,
                 onValueChange = { newTitle = it },
-                label = { Text("Add a task") },
+                placeholder = { Text("Add a task") },
                 singleLine = true,
                 enabled = !selectionMode,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                shape = RoundedCornerShape(50),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = MaterialTheme.colorScheme.surface,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                    disabledContainerColor = MaterialTheme.colorScheme.surface,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                ),
+                leadingIcon = { Icon(Icons.Filled.Add, contentDescription = null) },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).semantics { contentDescription = "Add a task" },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { submitNew() }),
                 trailingIcon = {
                     IconButton(onClick = { submitNew() }, enabled = newTitle.isNotBlank() && !selectionMode, modifier = Modifier.size(48.dp)) {
-                        Icon(Icons.Filled.Add, contentDescription = "Add task")
+                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Add task")
                     }
                 },
             )
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                listOf(TaskFilter.ALL, TaskFilter.OPEN, TaskFilter.COMPLETED, TaskFilter.STARRED).forEach { option ->
+                    PillChip(
+                        selected = filter == option,
+                        // The visible tasks change, so a selection made before is dropped (Delete must never reach hidden tasks).
+                        onClick = { filter = option; selected = emptySet() },
+                        label = option.label,
+                        leading = if (option == TaskFilter.STARRED) { { StarIcon(size = 17.dp, contentDescription = null) } } else null,
+                    )
+                }
+            }
             Text(
-                "Showing: ${filter.label} · Sorted by: ${sort.label}" +
+                "Sorted by: ${sort.label}" +
                     (if (activeQuery.isNotBlank()) " · ${visible.size} matching" else "") +
                     (if (selectionMode) " · Long-press or tap to select" else ""),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                modifier = Modifier.padding(start = 20.dp, end = 16.dp, top = 6.dp, bottom = 2.dp),
             )
             when {
                 items == null -> Box(Modifier.fillMaxSize())
@@ -267,17 +294,20 @@ fun TaskListScreen(nav: NavHostController, listId: String) {
                     },
                     body = if (all.isEmpty()) "Type above to add the first task to '$listName'." else "Change the filter to see other tasks in this list.",
                 )
-                else -> LazyColumn(Modifier.fillMaxSize()) {
-                    items(visible, key = { it.id }) { task ->
-                        TaskRow(
+                else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 24.dp)) {
+                    item { ListProgressCard(listName, open = all.size - completedCount, total = all.size) }
+                    item { Spacer(Modifier.height(12.dp)) }
+                    itemsIndexed(visible, key = { _, t -> t.id }) { i, task ->
+                        TaskItemRow(
                             task = task,
+                            position = GroupPosition.of(i, visible.size),
+                            onOpen = { nav.navigate(Routes.taskDetail(task.id)) },
+                            modifier = Modifier.animateItem(),
                             selectionMode = selectionMode,
                             selected = task.id in liveSelected,
                             onToggleComplete = { vm.setCompleted(task.id, it) },
-                            onOpen = { nav.navigate(Routes.taskDetail(task.id)) },
                             onToggleSelect = { selected = if (task.id in selected) selected - task.id else selected + task.id },
                         )
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     }
                 }
             }
@@ -313,100 +343,112 @@ fun TaskListScreen(nav: NavHostController, listId: String) {
 }
 
 /**
- * Completion is shown three ways (checkbox, strikethrough, "Completed" text); overdue is a word,
- * not only a colour. Long press enters selection mode; in that mode the leading control selects.
+ * One task as a row of a section card. Completion shows three ways (round check, strikethrough,
+ * "Completed"); overdue is a word, not only a colour. Long press enters selection mode, where the
+ * leading control selects instead. Without [onToggleComplete] (search results) the check only shows.
  */
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun TaskRow(
+internal fun TaskItemRow(
     task: TaskEntity,
-    selectionMode: Boolean,
-    selected: Boolean,
-    onToggleComplete: (Boolean) -> Unit,
+    position: GroupPosition,
     onOpen: () -> Unit,
-    onToggleSelect: () -> Unit,
+    modifier: Modifier = Modifier,
+    listName: String? = null,
+    selectionMode: Boolean = false,
+    selected: Boolean = false,
+    onToggleComplete: ((Boolean) -> Unit)? = null,
+    onToggleSelect: (() -> Unit)? = null,
 ) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .background(if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
-            .combinedClickable(onClick = { if (selectionMode) onToggleSelect() else onOpen() }, onLongClick = onToggleSelect)
-            .heightIn(min = 56.dp)
-            .height(IntrinsicSize.Min)
-            .padding(start = 4.dp, end = 16.dp, top = 4.dp, bottom = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (selectionMode) {
-            Checkbox(
-                checked = selected,
-                onCheckedChange = { onToggleSelect() },
-                modifier = Modifier.size(48.dp).semantics { contentDescription = if (selected) "Selected, tap to deselect" else "Not selected, tap to select" },
-            )
-        } else {
-            Checkbox(
-                checked = task.completed,
-                onCheckedChange = onToggleComplete,
-                modifier = Modifier.size(48.dp).semantics { contentDescription = if (task.completed) "Completed, tap to mark incomplete" else "Not completed, tap to mark complete" },
-            )
-        }
-        TaskRowContent(task, modifier = Modifier.weight(1f).padding(start = 4.dp))
-    }
-}
-
-/**
- * Body of a task row shared by list rows and search results: priority stripe, title, meta line
- * (list name, completion, due/overdue), priority chip, star and reminder icons. The caller sets
- * `Modifier.height(IntrinsicSize.Min)` on the enclosing row so the stripe spans the row.
- */
-@Composable
-internal fun TaskRowContent(task: TaskEntity, modifier: Modifier = Modifier, listName: String? = null) {
     val due = task.due()
     val overdue = task.isOverdue()
     val priority = task.priorityEnum()
+    val scheme = MaterialTheme.colorScheme
+    val ring = priorityColor(priority)
     val meta = buildList {
         if (listName != null) add(listName)
         if (task.completed) add("Completed")
         if (due != null) add("Due ${formatDateTime(due)}" + if (overdue) " · Overdue" else "")
     }
-    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-        if (priority != Priority.NONE) {
-            PriorityStripe(priority)
-            Spacer(Modifier.width(8.dp))
-        }
-        Column(Modifier.weight(1f)) {
-            Text(
-                task.title,
-                style = MaterialTheme.typography.bodyLarge,
-                textDecoration = if (task.completed) TextDecoration.LineThrough else TextDecoration.None,
-                color = if (task.completed) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (meta.isNotEmpty() || priority != Priority.NONE) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (priority != Priority.NONE) {
-                        PriorityChip(priority)
-                        if (meta.isNotEmpty()) Spacer(Modifier.width(8.dp))
-                    }
-                    if (meta.isNotEmpty()) {
-                        Text(
-                            meta.joinToString(" · "),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
+    ItemRow(
+        title = task.title,
+        modifier = modifier.cardSegment(position, fill = if (selected) scheme.primaryContainer else scheme.surface, line = scheme.outlineVariant, dividerInset = RowTextInset),
+        detail = meta.joinToString(" · ").ifEmpty { null },
+        detailColor = if (overdue) scheme.error else Color.Unspecified,
+        starred = task.starred,
+        done = task.completed,
+        titleStyle = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+        onClick = { if (selectionMode && onToggleSelect != null) onToggleSelect() else onOpen() },
+        onLongClick = onToggleSelect,
+        leadingSize = 48.dp,
+        leading = {
+            Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                when {
+                    selectionMode && onToggleSelect != null -> Checkbox(
+                        checked = selected,
+                        onCheckedChange = { onToggleSelect() },
+                        modifier = Modifier.size(48.dp).semantics { contentDescription = if (selected) "Selected, tap to deselect" else "Not selected, tap to select" },
+                    )
+                    onToggleComplete != null -> RoundCheck(
+                        checked = task.completed,
+                        onCheckedChange = onToggleComplete,
+                        ring = ring,
+                        description = if (task.completed) "Completed, tap to mark incomplete" else "Not completed, tap to mark complete",
+                    )
+                    else -> Icon(
+                        if (task.completed) Icons.Filled.CheckCircle else Icons.Filled.RadioButtonUnchecked,
+                        contentDescription = if (task.completed) "Completed" else "Open",
+                        tint = if (task.completed) scheme.primary else ring,
+                        modifier = Modifier.size(28.dp),
+                    )
                 }
             }
-        }
-        if (task.starred) {
-            Spacer(Modifier.width(8.dp))
-            Icon(Icons.Filled.Star, contentDescription = "Starred", tint = LocalHavenColors.current.warning, modifier = Modifier.size(20.dp))
-        }
+        },
+        below = if (priority != Priority.NONE) { { PriorityChip(priority) } } else null,
+    ) {
         if (task.reminderId != null) {
-            Spacer(Modifier.width(8.dp))
-            Icon(Icons.Filled.Alarm, contentDescription = "Reminder linked", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+            Icon(Icons.Filled.Alarm, contentDescription = "Reminder linked", tint = scheme.onSurfaceVariant, modifier = Modifier.padding(end = 10.dp).size(20.dp))
+        }
+    }
+}
+
+/** The list's colour tile, how many tasks are open and a completion bar. */
+@Composable
+private fun ListProgressCard(name: String, open: Int, total: Int) {
+    val colors = LocalHavenColors.current
+    GroupCard {
+        Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            ListTile(name, size = 48.dp, corner = 14.dp)
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    if (open == 0) "All ${taskCount(total)} done" else "$open open of $total",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                )
+                Spacer(Modifier.height(8.dp))
+                LinearProgressIndicator(
+                    progress = { if (total == 0) 0f else (total - open).toFloat() / total },
+                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(50)),
+                    color = if (open == 0) colors.success else MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    gapSize = 0.dp,
+                    drawStopIndicator = {},
+                )
+            }
+        }
+    }
+}
+
+/** A list's tile: its initials on the colour worked out from its name, like password entries. */
+@Composable
+internal fun ListTile(name: String, size: androidx.compose.ui.unit.Dp = 44.dp, corner: androidx.compose.ui.unit.Dp = 13.dp) {
+    val initials = entryInitials(name)
+    ColorTile(tileBrush(EntryColor.auto(name).color), size, corner) {
+        if (initials.isEmpty()) {
+            Icon(Icons.Filled.Checklist, contentDescription = null, tint = Color.White, modifier = Modifier.size(size * 0.5f))
+        } else {
+            // Like password tiles: sized by the tile, not the font setting, so the letters always fit.
+            val fontSize = with(androidx.compose.ui.platform.LocalDensity.current) { (size * 0.36f).toSp() }
+            Text(initials, color = Color.White, fontSize = fontSize, fontWeight = FontWeight.SemiBold, maxLines = 1)
         }
     }
 }

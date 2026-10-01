@@ -36,7 +36,7 @@ class AppContainer(val app: Application) {
     val throttle = GuessThrottle(
         initialFailures = prefs.throttleFailures,
         initialLockedUntil = prefs.throttleLockedUntil,
-        persist = { failures, until -> prefs.throttleFailures = failures; prefs.throttleLockedUntil = until },
+        persist = { failures, until -> prefs.saveThrottle(failures, until) },
     )
     val clipboard = SensitiveClipboard(app) { prefs.clipboardClearSeconds * 1000L }
 
@@ -51,7 +51,11 @@ class AppContainer(val app: Application) {
     lateinit var lockController: LockController
         private set
 
-    val session: VaultSession = VaultSession(app, keyManager, alarmRuntime, throttle) {
+    val session: VaultSession = VaultSession(
+        app, keyManager, alarmRuntime, throttle,
+        eraseLimit = { prefs.eraseAfterFailures },
+        onAutoErased = { prefs.clearAll(); prefs.erasedAfterWrongPasswords = true },
+    ) {
         clipboard.clearIfOwn()
         lockController.onLocked()
     }

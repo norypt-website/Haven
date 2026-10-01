@@ -21,6 +21,7 @@ import com.norypt.haven.ui.LocalAppContainer
 import com.norypt.haven.ui.components.HavenTopBar
 import com.norypt.haven.ui.components.ScreenPadding
 import com.norypt.haven.ui.components.SectionCard
+import com.norypt.haven.ui.components.SectionLabel
 import com.norypt.haven.ui.theme.ThemeMode
 import com.norypt.haven.ui.up
 
@@ -32,9 +33,8 @@ fun AppearanceSettingsScreen(nav: NavHostController) {
     Column(Modifier.fillMaxSize()) {
         HavenTopBar(title = "Appearance", onBack = { nav.up() })
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(ScreenPadding)) {
+            SectionLabel("Theme")
             SectionCard {
-                Text("Theme", style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(4.dp))
                 listOf(ThemeMode.SYSTEM to "System", ThemeMode.LIGHT to "Light", ThemeMode.DARK to "Dark").forEach { (m, label) ->
                     RadioRow(label = label, selected = mode == m) { mode = m; container.prefs.themeMode = m }
                 }

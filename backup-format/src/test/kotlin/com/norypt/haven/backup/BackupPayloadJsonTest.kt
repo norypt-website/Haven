@@ -51,6 +51,21 @@ class BackupPayloadJsonTest {
     }
 
     @Test
+    fun passwordEntriesFromOlderBackupsAreUnstarredWithAutomaticColour() {
+        val text = """{"format":1,"passwords":{"folders":[],"entries":[{"id":"p1","folderId":null,"title":"Mail","website":"","username":"me","password":"pw","notes":"","createdAtEpochMs":1,"updatedAtEpochMs":2}]}}"""
+        val entry = BackupPayloadJson.decode(text).passwords!!.entries.single()
+        assertThat(entry.starred).isFalse()
+        assertThat(entry.color).isEqualTo(0)
+    }
+
+    @Test
+    fun passwordEntryStarAndColourRoundTrip() {
+        val starred = PasswordEntryRecord("p1", null, "Mail", "", "me", "pw", "", 1L, 2L, starred = true, color = 6)
+        val text = BackupPayloadJson.encode(BackupPayload(passwords = PasswordSnapshot(emptyList(), listOf(starred))))
+        assertThat(BackupPayloadJson.decode(text).passwords!!.entries.single()).isEqualTo(starred)
+    }
+
+    @Test
     fun rejectsUnknownFormat() {
         assertThrows(BackupFormatException.UnsupportedVersion::class.java) {
             BackupPayloadJson.decode("""{"format":2}""")

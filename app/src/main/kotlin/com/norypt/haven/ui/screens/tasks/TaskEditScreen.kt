@@ -55,9 +55,12 @@ import androidx.navigation.NavHostController
 import com.norypt.haven.data.TaskRepository
 import com.norypt.haven.ui.LocalAppContainer
 import com.norypt.haven.ui.components.HavenTopBar
+import androidx.compose.material.icons.filled.TaskAlt
+import com.norypt.haven.ui.components.IconTile
+import com.norypt.haven.ui.components.SectionLabel
+import com.norypt.haven.ui.components.priorityTileBrush
 import com.norypt.haven.ui.components.PrioritySelector
 import com.norypt.haven.ui.components.StarButton
-import com.norypt.haven.ui.components.ScreenPadding
 import com.norypt.haven.ui.components.SectionCard
 import com.norypt.haven.ui.up
 import java.time.Instant
@@ -97,20 +100,25 @@ fun TaskEditScreen(nav: NavHostController, id: String?, listId: String?) {
         },
     ) { padding ->
         Column(
-            Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(ScreenPadding),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 24.dp),
         ) {
             val titleError = vm.showTitleError && vm.title.isBlank()
-            OutlinedTextField(
-                value = vm.title,
-                onValueChange = { vm.title = it },
-                label = { Text("Title") },
-                singleLine = true,
-                enabled = vm.loaded,
-                isError = titleError,
-                supportingText = if (titleError) ({ Text("A title is required.") }) else null,
-                modifier = Modifier.fillMaxWidth(),
-            )
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                // Live preview: the tile takes the priority colour chosen below.
+                IconTile(Icons.Filled.TaskAlt, priorityTileBrush(vm.priority), Modifier.padding(top = 8.dp), size = 56.dp, corner = 16.dp)
+                Spacer(Modifier.width(14.dp))
+                OutlinedTextField(
+                    value = vm.title,
+                    onValueChange = { vm.title = it },
+                    label = { Text("Title") },
+                    singleLine = true,
+                    enabled = vm.loaded,
+                    isError = titleError,
+                    supportingText = if (titleError) ({ Text("A title is required.") }) else null,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Spacer(Modifier.height(12.dp))
             OutlinedTextField(
                 value = vm.notes,
                 onValueChange = { vm.notes = it },
@@ -120,26 +128,23 @@ fun TaskEditScreen(nav: NavHostController, id: String?, listId: String?) {
                 modifier = Modifier.fillMaxWidth(),
             )
 
+            SectionLabel("Priority")
             SectionCard {
-                Text("Priority", style = MaterialTheme.typography.titleSmall)
-                Spacer(Modifier.height(8.dp))
                 // The four chips may not fit a narrow screen side by side; let them scroll instead of clipping.
                 Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
                     PrioritySelector(value = vm.priority, onChange = { vm.priority = it }, enabled = vm.loaded)
                 }
             }
 
+            SectionLabel("List")
             SectionCard {
-                Text("List", style = MaterialTheme.typography.titleSmall)
-                Spacer(Modifier.height(8.dp))
                 OutlinedButton(onClick = { picker = EditPicker.LIST }, enabled = lists.isNotEmpty(), modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                     Text(listName ?: if (lists.isEmpty()) "No lists available" else "Choose a list")
                 }
             }
 
+            SectionLabel("Due")
             SectionCard {
-                Text("Due", style = MaterialTheme.typography.titleSmall)
-                Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { picker = EditPicker.DATE }, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
                         Icon(Icons.Filled.Event, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -174,10 +179,9 @@ fun TaskEditScreen(nav: NavHostController, id: String?, listId: String?) {
                 }
             }
 
+            SectionLabel("If still not done")
             SectionCard {
                 val hasDue = vm.dueDate != null
-                Text("If still not done", style = MaterialTheme.typography.titleSmall)
-                Spacer(Modifier.height(4.dp))
                 Text(
                     if (hasDue) "Haven rings again at the chosen time after the due time if the task is still incomplete. Completing the task cancels it."
                     else "Set a due date to use a follow-up.",
@@ -206,9 +210,8 @@ fun TaskEditScreen(nav: NavHostController, id: String?, listId: String?) {
                 }
             }
 
+            SectionLabel("Linked reminder (optional)")
             SectionCard {
-                Text("Linked reminder (optional)", style = MaterialTheme.typography.titleSmall)
-                Spacer(Modifier.height(8.dp))
                 OutlinedButton(onClick = { picker = EditPicker.REMINDER }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                     Icon(Icons.Filled.Alarm, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
@@ -230,11 +233,13 @@ fun TaskEditScreen(nav: NavHostController, id: String?, listId: String?) {
                 )
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { nav.up() }, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("Cancel") }
-                Button(onClick = { save() }, enabled = canSave, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("Save") }
+            Spacer(Modifier.height(20.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedButton(onClick = { nav.up() }, modifier = Modifier.weight(1f).height(56.dp)) { Text("Cancel") }
+                Button(onClick = { save() }, enabled = canSave, modifier = Modifier.weight(1f).height(56.dp)) {
+                    Text("Save", style = MaterialTheme.typography.labelLarge.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold))
+                }
             }
-            Spacer(Modifier.height(16.dp))
         }
     }
 

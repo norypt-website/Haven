@@ -65,12 +65,12 @@ class LockControllerTest {
     @Test fun guessThrottleEscalatesWithoutWiping() {
         var t = 0L
         val g = GuessThrottle(now = { t })
-        repeat(2) { g.recordFailure() }
-        assertThat(g.remainingDelayMs()).isEqualTo(0)
         g.recordFailure()
         assertThat(g.remainingDelayMs()).isEqualTo(5_000)
+        g.recordFailure()
+        assertThat(g.remainingDelayMs()).isEqualTo(15_000)
         repeat(10) { g.recordFailure() }
-        assertThat(g.remainingDelayMs()).isEqualTo(60_000)
+        assertThat(g.remainingDelayMs()).isEqualTo(1_800_000)
         g.recordSuccess()
         assertThat(g.remainingDelayMs()).isEqualTo(0)
     }

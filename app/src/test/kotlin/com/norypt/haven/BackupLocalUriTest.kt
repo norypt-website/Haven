@@ -7,6 +7,7 @@ import com.norypt.haven.alarm.AlarmRuntime
 import com.norypt.haven.backup.BackupManager
 import com.norypt.haven.crypto.KeyringStore
 import com.norypt.haven.crypto.VaultKeyManager
+import com.norypt.haven.security.EraseAfterFailures
 import com.norypt.haven.security.GuessThrottle
 import com.norypt.haven.session.VaultSession
 import kotlinx.coroutines.runBlocking
@@ -26,7 +27,7 @@ class BackupLocalUriTest {
             override fun deriveKey(password: ByteArray, salt: ByteArray, params: com.norypt.haven.crypto.Argon2Params, outputLength: Int): ByteArray = ByteArray(outputLength)
         }
         val keys = VaultKeyManager(KeyringStore(File(ctx.cacheDir, "k.json")), fakeKdf, com.norypt.haven.crypto.AndroidKeystoreWrappingKeys(true))
-        val session = VaultSession(ctx, keys, AlarmRuntime.get(ctx), GuessThrottle()) {}
+        val session = VaultSession(ctx, keys, AlarmRuntime.get(ctx), GuessThrottle(), eraseLimit = { EraseAfterFailures.OFF }, onAutoErased = {}) {}
         return BackupManager(ctx, session, AlarmRuntime.get(ctx))
     }
 

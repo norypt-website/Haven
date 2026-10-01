@@ -87,6 +87,9 @@ public data class PasswordEntryRecord(
     val notes: String,
     val createdAtEpochMs: Long,
     val updatedAtEpochMs: Long,
+    val starred: Boolean = false,
+    /** 0 = automatic colour; otherwise the palette id chosen in the editor. */
+    val color: Int = 0,
 )
 
 /** JSON encoding of [BackupPayload]. Decoding ignores unknown keys and rejects unknown formats. */

@@ -2,7 +2,6 @@ package com.norypt.haven.ui.screens.settings
 
 import android.net.Uri
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -15,12 +14,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
@@ -49,8 +45,14 @@ import com.norypt.haven.crypto.SecurityLevel
 import com.norypt.haven.crypto.VaultIds
 import com.norypt.haven.crypto.VaultKeyEnvelope
 import com.norypt.haven.di.AppContainer
+import com.norypt.haven.security.EraseAfterFailures
+import com.norypt.haven.session.UnlockResult
 import com.norypt.haven.ui.components.FactLevel
 import com.norypt.haven.ui.components.PasswordField
+import com.norypt.haven.ui.LocalAppContainer
+import com.norypt.haven.ui.components.PasswordWaitLine
+import com.norypt.haven.ui.components.refusalText
+import com.norypt.haven.ui.components.rememberPasswordWaitMs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -77,17 +79,29 @@ fun timeoutLabel(ms: Long): String {
 /* ---------- Shared settings widgets ---------- */
 
 @Composable
-fun SettingsNavRow(title: String, detail: String? = null, onClick: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable(onClick = onClick, role = Role.Button).padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleSmall)
-            if (detail != null) Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
+fun SettingsNavRow(
+    title: String,
+    detail: String? = null,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    tint: androidx.compose.ui.graphics.Color? = null,
+    onClick: () -> Unit,
+) {
+    com.norypt.haven.ui.components.ItemRow(
+        title = title,
+        detail = detail,
+        titleStyle = MaterialTheme.typography.bodyLarge.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Medium),
+        onClick = onClick,
+        leading = {
+            if (icon != null) {
+                com.norypt.haven.ui.components.IconTile(
+                    icon,
+                    com.norypt.haven.ui.components.tileBrush(tint ?: MaterialTheme.colorScheme.primary),
+                    size = 40.dp,
+                    corner = 12.dp,
+                )
+            }
+        },
+    ) { com.norypt.haven.ui.components.RowChevron() }
 }
 
 @Composable
@@ -155,8 +169,9 @@ fun PasswordPromptDialog(
 ) {
     var text by remember { mutableStateOf("") }
     DisposableEffect(Unit) { onDispose { text = "" } }
+    val waitMs = rememberPasswordWaitMs(LocalAppContainer.current.throttle)
     val submit = {
-        if (!busy && text.isNotEmpty()) {
+        if (!busy && waitMs == 0L && text.isNotEmpty()) {
             val chars = text.toCharArray()
             text = ""
             onConfirm(chars)
@@ -170,10 +185,11 @@ fun PasswordPromptDialog(
                 Text(body, style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(12.dp))
                 PasswordField(value = text, onValueChange = { if (!busy) text = it }, label = "Haven password", isError = error != null, supportingText = error, onDone = submit)
+                PasswordWaitLine(waitMs, Modifier.padding(top = 4.dp))
                 if (busy) BusyRow("Checking password…")
             }
         },
-        confirmButton = { Button(onClick = submit, enabled = !busy && text.isNotEmpty()) { Text(confirmLabel) } },
+        confirmButton = { Button(onClick = submit, enabled = !busy && waitMs == 0L && text.isNotEmpty()) { Text(confirmLabel) } },
         dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("Cancel") } },
     )
 }
@@ -181,13 +197,22 @@ fun PasswordPromptDialog(
 /* ---------- Security settings ---------- */
 
 class SecurityViewModel(private val container: AppContainer) : ViewModel() {
-    enum class Action { DELETE_REMINDERS, DELETE_TASKS, DELETE_PASSWORDS, ERASE_ALL, DEVICE_AUTH }
+    enum class Action { DELETE_REMINDERS, DELETE_TASKS, DELETE_PASSWORDS, ERASE_ALL, DEVICE_AUTH, ERASE_LIMIT }
     enum class Step { NONE, PASSWORD, CONFIRM }
 
     var policy by mutableStateOf(container.prefs.lockPolicy)
     var lockedScreenActions by mutableStateOf(container.alarmRuntime.prefs.lockedScreenActionsAllowed)
     var clipboardSeconds by mutableStateOf(container.prefs.clipboardClearSeconds)
     var requireDeviceAuth by mutableStateOf(container.prefs.requireDeviceAuth)
+    /** Wrong passwords before the automatic erase ([EraseAfterFailures.OFF]: never). */
+    var eraseLimit by mutableStateOf(container.prefs.eraseAfterFailures)
+        private set
+    /** The limit waiting for the password (see [chooseEraseLimit]). */
+    var pendingEraseLimit by mutableStateOf(EraseAfterFailures.DEFAULT)
+        private set
+    /** Wrong passwords already counted when that change was asked for. */
+    var pendingFailures by mutableStateOf(0)
+        private set
     var envelope by mutableStateOf<VaultKeyEnvelope?>(null)
     var busy by mutableStateOf(false)
     /** Short status line shown after an action completes. */
@@ -228,7 +253,7 @@ class SecurityViewModel(private val container: AppContainer) : ViewModel() {
     fun closeChangePassword() { showChangePassword = false; currentPassword = ""; newPassword = ""; confirmPassword = ""; changeError = null }
 
     fun changePassword() {
-        if (busy) return
+        if (busy || container.throttle.remainingDelayMs() > 0) return
         changeError = null
         when {
             currentPassword.isEmpty() -> { changeError = "Enter your current password."; return }
@@ -242,13 +267,13 @@ class SecurityViewModel(private val container: AppContainer) : ViewModel() {
             val old = currentPassword.toCharArray()
             val new = newPassword.toCharArray()
             try {
-                val ok = container.session.changePassword(old, new, params)
-                if (ok) {
+                val result = container.session.changePassword(old, new, params)
+                if (result == UnlockResult.Success) {
                     closeChangePassword()
                     notice = "Password changed. Existing backups still open with the passphrase they were made with."
                     loadEnvelope()
                 } else {
-                    changeError = "Current password is wrong"
+                    changeError = refusalText(result)
                 }
             } catch (e: IllegalArgumentException) {
                 changeError = "The new password must differ from your duress password."
@@ -260,6 +285,29 @@ class SecurityViewModel(private val container: AppContainer) : ViewModel() {
                 busy = false
             }
         }
+    }
+
+    /**
+     * Fewer attempts apply at once; more attempts, or turning the erase off, first ask for the Haven
+     * password. So does any change while wrong passwords are already counted: the correct password
+     * clears them, so a lower limit cannot erase the vault on the very next slip.
+     */
+    fun chooseEraseLimit(limit: Int) {
+        if (busy || limit == eraseLimit) return
+        val failures = container.throttle.failureCount
+        if (EraseAfterFailures.isWeaker(from = eraseLimit, to = limit) || failures > 0) {
+            pendingEraseLimit = limit
+            pendingFailures = failures
+            begin(Action.ERASE_LIMIT)
+        } else {
+            applyEraseLimit(limit)
+        }
+    }
+
+    private fun applyEraseLimit(limit: Int) {
+        container.prefs.eraseAfterFailures = limit
+        eraseLimit = limit
+        notice = if (limit == EraseAfterFailures.OFF) "The automatic erase is off." else "Haven now erases the vault after $limit wrong passwords."
     }
 
     fun beginDeviceAuthChange(newValue: Boolean) {
@@ -288,19 +336,32 @@ class SecurityViewModel(private val container: AppContainer) : ViewModel() {
         dialogError = null
         viewModelScope.launch {
             try {
-                if (a == Action.DEVICE_AUTH) {
-                    val ok = container.session.setDeviceAuthRequirement(chars, pendingDeviceAuthValue)
-                    if (ok) {
-                        container.prefs.requireDeviceAuth = pendingDeviceAuthValue
-                        requireDeviceAuth = pendingDeviceAuthValue
-                        notice = if (pendingDeviceAuthValue) "Device screen lock is now also required to open vaults." else "Device screen lock is no longer required to open vaults."
-                        loadEnvelope()
-                        action = null; step = Step.NONE
-                    } else {
-                        dialogError = "Wrong password."
+                when (a) {
+                    Action.DEVICE_AUTH -> {
+                        val result = container.session.setDeviceAuthRequirement(chars, pendingDeviceAuthValue)
+                        if (result == UnlockResult.Success) {
+                            container.prefs.requireDeviceAuth = pendingDeviceAuthValue
+                            requireDeviceAuth = pendingDeviceAuthValue
+                            notice = if (pendingDeviceAuthValue) "Device screen lock is now also required to open vaults." else "Device screen lock is no longer required to open vaults."
+                            loadEnvelope()
+                            action = null; step = Step.NONE
+                        } else {
+                            dialogError = refusalText(result)
+                        }
                     }
-                } else {
-                    if (container.session.verifyPassword(chars)) step = Step.CONFIRM else dialogError = "Wrong password."
+                    Action.ERASE_LIMIT -> {
+                        val result = container.session.verifyPassword(chars)
+                        if (result == UnlockResult.Success) {
+                            applyEraseLimit(pendingEraseLimit)
+                            action = null; step = Step.NONE
+                        } else {
+                            dialogError = refusalText(result)
+                        }
+                    }
+                    else -> {
+                        val result = container.session.verifyPassword(chars)
+                        if (result == UnlockResult.Success) step = Step.CONFIRM else dialogError = refusalText(result)
+                    }
                 }
             } catch (e: Exception) {
                 dialogError = "Could not verify (${e.javaClass.simpleName})."
@@ -332,7 +393,7 @@ class SecurityViewModel(private val container: AppContainer) : ViewModel() {
                         notice = "All passwords and folders deleted."
                     }
                     Action.ERASE_ALL -> container.session.eraseEverything { container.prefs.clearAll() } // root guard returns to Welcome
-                    Action.DEVICE_AUTH -> Unit
+                    Action.DEVICE_AUTH, Action.ERASE_LIMIT -> Unit
                 }
             } catch (e: Exception) {
                 notice = "The action failed (${e.javaClass.simpleName})."

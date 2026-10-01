@@ -148,7 +148,7 @@ class BackupManager(private val context: Context, private val session: VaultSess
             val p = session.passwords()
             PasswordSnapshot(
                 folders = p.folders().all().map { FolderRecord(it.id, it.name, it.position) },
-                entries = p.entries().all().map { PasswordEntryRecord(it.id, it.folderId, it.title, it.website, it.username, it.password, it.notes, it.createdAt, it.updatedAt) },
+                entries = p.entries().all().map { PasswordEntryRecord(it.id, it.folderId, it.title, it.website, it.username, it.password, it.notes, it.createdAt, it.updatedAt, it.starred, it.color) },
             )
         } else null
         val settings = c.meta().all().filter { it.key != META_BACKUP_KEY && it.key != META_BACKUP_KEY_VERIFIED }.associate { it.key to it.value }
@@ -218,7 +218,7 @@ class BackupManager(private val context: Context, private val session: VaultSess
                     p.entries().deleteEverything(); p.folders().deleteEverything()
                     p.folders().upsertAll(pw2.folders.map { FolderEntity(it.id, it.name, it.position) })
                     val folderIds = pw2.folders.map { it.id }.toSet()
-                    p.entries().upsertAll(pw2.entries.map { PasswordEntryEntity(it.id, it.folderId?.takeIf { f -> f in folderIds }, it.title, it.website, it.username, it.password, it.notes, it.createdAtEpochMs, it.updatedAtEpochMs) })
+                    p.entries().upsertAll(pw2.entries.map { PasswordEntryEntity(it.id, it.folderId?.takeIf { f -> f in folderIds }, it.title, it.website, it.username, it.password, it.notes, it.createdAtEpochMs, it.updatedAtEpochMs, it.starred, it.color) })
                 }
                 passwords = pw2.entries.size
             }

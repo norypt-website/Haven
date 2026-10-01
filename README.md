@@ -11,7 +11,7 @@ Reminders that really ring, tasks and a password keeper, encrypted on your phone
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-0B132B)](LICENSE)
 [![Android 12+](https://img.shields.io/badge/Android-12%2B-3DDC84?logo=android&logoColor=white)](#requirements)
 ![No network permission](https://img.shields.io/badge/network-none-1A2540)
-![Tests](https://img.shields.io/badge/unit%20tests-160%20passing-2D9E5F)
+![Tests](https://img.shields.io/badge/unit%20tests-218%20passing-2D9E5F)
 
 <sub>By <a href="https://norypt.com">Norypt</a></sub>
 
@@ -35,7 +35,8 @@ have even unlocked the phone.
 | ✅ **Tasks** | Lists, search, due dates, starring, priority levels, and a follow-up alarm if a task is still open after its due time. |
 | 🔑 **Password keeper** | Separately unlocked vault for website logins with a generator (passwords and passphrases), folders, masked reveal and a self-clearing clipboard. |
 | 💾 **Two-factor backups** | Encrypted `.hvbk` files in *Downloads/Haven*. Restoring needs **both** the passphrase you choose and a 256-bit backup key shown once in the app. Cloud pickers are refused. |
-| 🛡️ **Duress password** | Opt-in second password. Typed under pressure it silently replaces the vault with an empty decoy and shows only "Wrong password". |
+| ⏳ **Wrong-password protection** | Each wrong password waits longer than the last (5 s up to 30 min). After 10 wrong passwords in a row Haven erases the vault; choose 3, 5, 7, 10 or off. |
+| 🛡️ **Duress password** | Opt-in second password. Typed under pressure it silently wipes the vault and shows only "Wrong password", taking exactly as long as a wrong password; afterwards no password opens it. |
 | 🌓 **Norypt design** | Light, dark and system themes; reflows at 200 % font scale; every touch target at least 48 dp. |
 
 ## Security at a glance
@@ -63,7 +64,7 @@ Download the signed APK from the [latest release](https://github.com/norypt-webs
 ```bash
 git clone https://github.com/norypt-website/Haven.git
 cd Haven
-./gradlew testDebugUnitTest :recurrence-engine:test :backup-format:test   # 160 tests
+./gradlew testDebugUnitTest :recurrence-engine:test :backup-format:test   # 218 tests
 ./gradlew assembleDebug                                                    # app/build/outputs/apk/debug/
 ```
 
@@ -83,10 +84,11 @@ Release builds are signed out of tree with a `keystore.properties` that never en
 
 ## Status
 
-Version 0.1.0 is feature-complete for its v1 scope. 160 JVM unit tests and the instrumented
+Version 0.1.4 is feature-complete for its v1 scope. 218 JVM unit tests and the instrumented
 Keystore/SQLCipher suites pass. StrongBox keys, Direct Boot ringing, Doze and battery-saver
-delivery, the duress wipe and the full backup → wipe → restore cycle were verified on a Pixel 9
-running Android 17, and an internal adversarial code review was completed with its findings fixed.
+delivery, the duress wipe, the automatic erase after wrong passwords and the full
+backup → wipe → restore cycle were verified on Pixel 9 and Pixel 9a phones running Android 17,
+and internal adversarial code reviews were completed with their findings fixed.
 **No independent security audit has been performed yet.**
 
 ## Security policy

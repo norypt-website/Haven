@@ -21,7 +21,6 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.AssignmentLate
-import androidx.compose.material.icons.filled.Star
 import com.norypt.haven.ui.components.PriorityChip
 import com.norypt.haven.ui.theme.LocalHavenColors
 import androidx.compose.material3.AlertDialog
@@ -54,6 +53,7 @@ import com.norypt.haven.ui.components.HavenTopBar
 import com.norypt.haven.ui.components.ListSpacing
 import com.norypt.haven.ui.components.ScreenPadding
 import com.norypt.haven.ui.components.SectionCard
+import com.norypt.haven.ui.components.StarIcon
 import com.norypt.haven.ui.up
 import java.time.LocalDate
 import java.time.LocalTime
@@ -111,7 +111,7 @@ private fun RingingCard(item: RingingViewModel.Item, vm: RingingViewModel) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         val starred = item.reminder?.starred == true || item.followUpTask?.starred == true
                         if (starred) {
-                            Icon(Icons.Filled.Star, contentDescription = "Starred", tint = LocalHavenColors.current.warning, modifier = Modifier.size(20.dp))
+                            StarIcon(size = 20.dp)
                             Spacer(Modifier.width(6.dp))
                         }
                         Text(item.title, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f, fill = false))
