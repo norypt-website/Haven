@@ -76,7 +76,9 @@ import kotlinx.coroutines.launch
 fun NoteEditScreen(nav: NavHostController, id: String?) {
     val container = LocalAppContainer.current
     if (container.session.contentOrNull() == null) return
-    val vm: NoteEditViewModel = viewModel { NoteEditViewModel(container.notes, id, container.appScope) }
+    val vm: NoteEditViewModel = viewModel {
+        NoteEditViewModel(NoteEditDeps.of(container.notes, container.session, { container.lockController.touch() }, container.appScope), id)
+    }
     val title by vm.title.collectAsState()
     val body by vm.body.collectAsState()
     val loaded by vm.loaded.collectAsState()

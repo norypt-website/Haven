@@ -18,15 +18,24 @@ import com.norypt.haven.storage.EncryptedDatabaseOpener
 import com.norypt.haven.storage.content.ContentDatabase
 import com.norypt.haven.storage.content.TaskListEntity
 import com.norypt.haven.storage.passwords.PasswordDatabase
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.util.UUID
+import java.util.concurrent.CopyOnWriteArrayList
 
 class VaultLockedException : IllegalStateException("Vault is locked")
+
+/** How long a lock waits for its before-lock hooks (see [VaultSession.addBeforeLock]). */
+internal const val BEFORE_LOCK_TIMEOUT_MS = 1_000L
 
 /**
  * The outcome of entering the Haven password, whether to open a vault or to confirm a change in
@@ -81,6 +90,12 @@ class VaultSession(
 
     /** Set by [duressWipe] when it closed databases the screens were reading; see [attempt]. */
     private var duressClosedDatabases = false
+
+    /** Work that must reach the databases before a lock closes them (an open editor's last text). */
+    private class BeforeLock(val run: suspend () -> Unit)
+    private val beforeLock = CopyOnWriteArrayList<BeforeLock>()
+    /** Hooks run here, so one that outlasts its time keeps going on its own instead of holding up the lock. */
+    private val hookScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     @Volatile private var contentDb: ContentDatabase? = null
     @Volatile private var passwordDb: PasswordDatabase? = null
@@ -293,8 +308,40 @@ class VaultSession(
         }
     }
 
+    /**
+     * Registers [hook] to run at the start of every [lock], while the databases are still open.
+     * Returns the function that unregisters it. Only a lock runs these: an erase, a duress wipe or
+     * closing the keeper does not.
+     */
+    fun addBeforeLock(hook: suspend () -> Unit): () -> Unit {
+        val entry = BeforeLock(hook)
+        beforeLock += entry
+        return { beforeLock.remove(entry) }
+    }
+
+    /**
+     * Runs the before-lock hooks side by side, waiting at most [BEFORE_LOCK_TIMEOUT_MS] for all of
+     * them. A failing hook is logged and ignored, and a slow one is left to finish against a closed
+     * vault (the repositories ignore writes once it is closed): neither can keep the vault open.
+     */
+    private suspend fun runBeforeLock() {
+        if (beforeLock.isEmpty()) return
+        val jobs = beforeLock.map { entry ->
+            hookScope.launch {
+                try {
+                    entry.run()
+                } catch (e: Exception) {
+                    SafeLog.e("VaultSession", "before lock", e)
+                }
+            }
+        }
+        withTimeoutOrNull(BEFORE_LOCK_TIMEOUT_MS) { jobs.joinAll() }
+    }
+
     /** Full lock: close all connections. Safe to call repeatedly. */
     suspend fun lock() = withContext(Dispatchers.Default) {
+        // Outside the mutex: a hook writes through the repositories, which do not take it.
+        if (_state.value !is SessionState.Locked) runBeforeLock()
         mutex.withLock {
             if (_state.value is SessionState.Locked) return@withLock
             _state.value = SessionState.Locking
