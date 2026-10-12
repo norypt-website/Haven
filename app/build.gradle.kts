@@ -110,7 +110,8 @@ val forbiddenPermissions = listOf(
     "android.permission.READ_EXTERNAL_STORAGE",
     "android.permission.WRITE_EXTERNAL_STORAGE",
     "android.permission.MANAGE_EXTERNAL_STORAGE",
-    "android.permission.READ_MEDIA_IMAGES",
+    // READ_MEDIA_IMAGES (and READ_MEDIA_VISUAL_USER_SELECTED) are declared on purpose for the photo
+    // vault import: asked only when the user taps "Add photos". Video and audio stay forbidden.
     "android.permission.READ_MEDIA_VIDEO",
     "android.permission.READ_MEDIA_AUDIO",
     "android.permission.ACCESS_FINE_LOCATION",

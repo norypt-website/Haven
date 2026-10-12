@@ -5,6 +5,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -98,9 +99,13 @@ private sealed interface ListDialog {
     data object MoveToNewFolder : ListDialog
 }
 
+/**
+ * The password half of the Vault tab. [header] (the Vault hero and segment chips) scrolls with the
+ * list as its first item, so large text never squeezes the entries into a sliver.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PasswordsContent(nav: NavHostController) {
+internal fun PasswordsContent(nav: NavHostController, header: @Composable () -> Unit = {}) {
     val container = LocalAppContainer.current
     val vm = rememberPasswordsListViewModel(container)
     val folders by vm.folders.collectAsState()
@@ -148,7 +153,7 @@ private fun PasswordsContent(nav: NavHostController) {
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
                 )
             } else {
-                HavenTopBar("Passwords") {
+                HavenTopBar("Vault") {
                     IconButton(
                         onClick = {
                             // Leave the keeper screens first so the vault gate does not bounce to the keeper unlock screen.
@@ -156,7 +161,7 @@ private fun PasswordsContent(nav: NavHostController) {
                             scope.launch { container.session.lockPasswords() }
                         },
                         modifier = Modifier.size(48.dp),
-                    ) { Icon(Icons.Filled.Lock, contentDescription = "Lock password keeper") }
+                    ) { Icon(Icons.Filled.Lock, contentDescription = "Lock vault") }
                     IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(48.dp)) { Icon(Icons.Filled.MoreVert, contentDescription = "More options") }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                         DropdownMenuItem(
@@ -189,51 +194,53 @@ private fun PasswordsContent(nav: NavHostController) {
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
-        Column(Modifier.padding(padding).fillMaxSize()) {
-            SearchField(query = query, onQueryChange = { query = it })
-            FilterRow(filter = filter, totals = totals, folders = folders, onPick = { vm.setFilter(it) })
+        LazyColumn(Modifier.padding(padding).fillMaxSize(), contentPadding = PaddingValues(top = 2.dp, bottom = 96.dp)) {
+            item(key = "header") { Box(Modifier.padding(horizontal = 16.dp)) { header() } }
+            item(key = "search") { SearchField(query = query, onQueryChange = { query = it }) }
+            item(key = "filters") { FilterRow(filter = filter, totals = totals, folders = folders, onPick = { vm.setFilter(it) }) }
             if (entries.isEmpty()) {
-                when {
-                    query.isNotBlank() -> EmptyState("Nothing matches", "No entry title, website or username contains that text.")
-                    filter == ListFilter.Starred -> EmptyState("No starred passwords", "Open an entry and tap the star to keep it at the top.")
-                    filter != ListFilter.All -> EmptyState("This folder is empty", "Long-press entries in the list to move them here.")
-                    else -> EmptyState(
-                        "No passwords yet",
-                        "Entries are kept only in this vault on this device.",
-                        action = { Button(onClick = { nav.navigate(Routes.passwordEdit()) }) { Text("New entry") } },
-                    )
+                item(key = "empty") {
+                    when {
+                        query.isNotBlank() -> EmptyState("Nothing matches", "No entry title, website or username contains that text.")
+                        filter == ListFilter.Starred -> EmptyState("No starred passwords", "Open an entry and tap the star to keep it at the top.")
+                        filter != ListFilter.All -> EmptyState("This folder is empty", "Long-press entries in the list to move them here.")
+                        else -> EmptyState(
+                            "No passwords yet",
+                            "Entries are kept only in this vault on this device.",
+                            action = { Button(onClick = { nav.navigate(Routes.passwordEdit()) }) { Text("New entry") } },
+                        )
+                    }
                 }
             } else {
-                LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 96.dp)) {
-                    fun group(list: List<PasswordEntryEntity>) = entryGroup(
-                        entries = list,
-                        folderNames = if (showFolderTags) folderNames else emptyMap(),
-                        selectionMode = selectionMode,
-                        selected = selected,
-                        onOpen = { nav.navigate(Routes.passwordDetail(it.id)) },
-                        onToggle = { vm.toggleSelected(it.id) },
-                    )
-                    // Headers keep position-based keys on purpose: the list holds on to the key of its
-                    // first visible item, so a fixed header key would keep "Other entries" in place and
-                    // push a newly appearing Starred section out of view above it. Rows keep their ids.
-                    if (sections.starred.isNotEmpty()) {
-                        item {
-                            SectionLabel(
-                                "Starred",
-                                count = sections.starred.size,
-                                description = "Starred, ${entryCount(sections.starred.size)}",
-                                leading = { StarIcon(size = 15.dp, contentDescription = null) },
-                            )
-                        }
-                        group(sections.starred)
+                fun group(list: List<PasswordEntryEntity>) = entryGroup(
+                    entries = list,
+                    folderNames = if (showFolderTags) folderNames else emptyMap(),
+                    selectionMode = selectionMode,
+                    selected = selected,
+                    onOpen = { nav.navigate(Routes.passwordDetail(it.id)) },
+                    onToggle = { vm.toggleSelected(it.id) },
+                )
+                // Section headers keep position-based keys on purpose: the list holds on to the key of
+                // its first visible item, so a fixed header key would keep "Other entries" in place and
+                // push a newly appearing Starred section out of view above it. Rows keep their ids.
+                if (sections.starred.isNotEmpty()) {
+                    item {
+                        SectionLabel(
+                            "Starred",
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            count = sections.starred.size,
+                            description = "Starred, ${entryCount(sections.starred.size)}",
+                            leading = { StarIcon(size = 15.dp, contentDescription = null) },
+                        )
                     }
-                    if (sections.others.isNotEmpty()) {
-                        item {
-                            val title = if (sections.starred.isEmpty()) "Entries" else "Other entries"
-                            SectionLabel(title, count = sections.others.size, description = "$title, ${entryCount(sections.others.size)}")
-                        }
-                        group(sections.others)
+                    group(sections.starred)
+                }
+                if (sections.others.isNotEmpty()) {
+                    item {
+                        val title = if (sections.starred.isEmpty()) "Entries" else "Other entries"
+                        SectionLabel(title, modifier = Modifier.padding(horizontal = 16.dp), count = sections.others.size, description = "$title, ${entryCount(sections.others.size)}")
                     }
+                    group(sections.others)
                 }
             }
         }
@@ -347,7 +354,7 @@ private fun LazyListScope.entryGroup(
             selected = entry.id in selected,
             onClick = { if (selectionMode) onToggle(entry) else onOpen(entry) },
             onLongClick = { onToggle(entry) },
-            modifier = Modifier.animateItem(),
+            modifier = Modifier.animateItem().padding(horizontal = 16.dp),
         )
     }
 }

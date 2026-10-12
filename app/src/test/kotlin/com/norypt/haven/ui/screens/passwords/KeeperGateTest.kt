@@ -11,6 +11,11 @@ class KeeperGateTest {
         }
     }
 
+    @Test fun photoScreensAreGated() {
+        assertThat(keeperNeedsUnlock(open = false, appUnlocked = true, currentRoute = Routes.PHOTO_VIEWER)).isTrue()
+        assertThat(keeperNeedsUnlock(open = false, appUnlocked = true, currentRoute = Routes.PHOTO_IMPORT)).isTrue()
+    }
+
     @Test fun lockingTheKeeperWhileLeavingItDoesNotBounceBack() {
         // The lock button navigates to Today first; the list fading out must not reopen the unlock screen.
         assertThat(keeperNeedsUnlock(open = false, appUnlocked = true, currentRoute = Routes.TODAY)).isFalse()

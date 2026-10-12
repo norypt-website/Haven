@@ -42,7 +42,8 @@ import com.norypt.haven.ui.screens.passwords.PasswordDetailScreen
 import com.norypt.haven.ui.screens.passwords.PasswordEditScreen
 import com.norypt.haven.ui.screens.passwords.PasswordGeneratorScreen
 import com.norypt.haven.ui.screens.passwords.PasswordUnlockScreen
-import com.norypt.haven.ui.screens.passwords.PasswordsScreen
+import com.norypt.haven.ui.screens.photos.PhotoImportScreen
+import com.norypt.haven.ui.screens.photos.PhotoViewerScreen
 import com.norypt.haven.ui.screens.reminders.MissedScreen
 import com.norypt.haven.ui.screens.reminders.ReminderDetailScreen
 import com.norypt.haven.ui.screens.reminders.ReminderEditScreen
@@ -59,6 +60,7 @@ import com.norypt.haven.ui.screens.tasks.TaskDetailScreen
 import com.norypt.haven.ui.screens.tasks.TaskEditScreen
 import com.norypt.haven.ui.screens.tasks.TaskListScreen
 import com.norypt.haven.ui.screens.tasks.TasksScreen
+import com.norypt.haven.ui.screens.vault.VaultScreen
 
 val LocalAppContainer = staticCompositionLocalOf<AppContainer> { error("AppContainer not provided") }
 
@@ -214,7 +216,9 @@ fun HavenApp(container: AppContainer, initialOccurrenceId: String?) {
                     NoteEditScreen(nav, it.arguments?.getString("id")?.ifEmpty { null })
                 }
 
-                composable(Routes.PASSWORDS) { PasswordsScreen(nav) }
+                composable(Routes.PASSWORDS) { VaultScreen(nav) }
+                composable(Routes.PHOTO_IMPORT) { PhotoImportScreen(nav) }
+                composable(Routes.PHOTO_VIEWER, arguments = listOf(navArgument("id") { type = NavType.StringType })) { PhotoViewerScreen(nav, it.arguments!!.getString("id")!!) }
                 composable(Routes.PASSWORD_UNLOCK) { PasswordUnlockScreen(nav) }
                 composable(Routes.PASSWORD_DETAIL, arguments = listOf(navArgument("id") { type = NavType.StringType })) { PasswordDetailScreen(nav, it.arguments!!.getString("id")!!) }
                 composable(Routes.PASSWORD_EDIT, arguments = listOf(navArgument("id") { type = NavType.StringType; defaultValue = "" })) { PasswordEditScreen(nav, it.arguments?.getString("id")?.ifEmpty { null }) }

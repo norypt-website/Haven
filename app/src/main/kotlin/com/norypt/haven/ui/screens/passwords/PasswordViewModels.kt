@@ -70,7 +70,10 @@ internal fun PasswordVaultGate(nav: NavHostController, content: @Composable () -
 }
 
 /** The keeper screens composed through [PasswordVaultGate]; the keeper unlock screen is not one of them. */
-private val GatedRoutes = setOf(Routes.PASSWORDS, Routes.PASSWORD_DETAIL, Routes.PASSWORD_EDIT, Routes.PASSWORD_GENERATOR)
+private val GatedRoutes = setOf(
+    Routes.PASSWORDS, Routes.PASSWORD_DETAIL, Routes.PASSWORD_EDIT, Routes.PASSWORD_GENERATOR,
+    Routes.PHOTO_IMPORT, Routes.PHOTO_VIEWER,
+)
 
 /**
  * Whether the gate should send the user to the keeper unlock screen. Only a keeper screen that is
