@@ -25,6 +25,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -60,6 +61,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import com.norypt.haven.ui.LocalAppContainer
 import com.norypt.haven.ui.components.ConfirmDialog
+import com.norypt.haven.ui.components.EmptyState
 import com.norypt.haven.ui.components.EntryColor
 import com.norypt.haven.ui.components.TagPill
 import com.norypt.haven.ui.components.color
@@ -84,6 +86,7 @@ fun NoteEditScreen(nav: NavHostController, id: String?) {
     val loaded by vm.loaded.collectAsState()
     val saved by vm.saved.collectAsState()
     val updatedAt by vm.updatedAt.collectAsState()
+    val readFailed by vm.readFailed.collectAsState()
     var menu by remember { mutableStateOf(false) }
     var confirm by remember { mutableStateOf(false) }
     var leaving by remember { mutableStateOf(false) }
@@ -123,6 +126,16 @@ fun NoteEditScreen(nav: NavHostController, id: String?) {
             )
         },
     ) { padding ->
+        if (readFailed) {
+            Column(Modifier.padding(padding).fillMaxSize()) {
+                EmptyState(
+                    "Could not open this note",
+                    "Nothing was changed. Go back and try again.",
+                    action = { Button(onClick = leave, modifier = Modifier.heightIn(min = 48.dp)) { Text("Back") } },
+                )
+            }
+            return@Scaffold
+        }
         if (!loaded) return@Scaffold
         val displayTitle = NoteLogic.displayTitle(title, body)
         val accent by animateColorAsState(EntryColor.auto(displayTitle).color, tween(400), label = "note accent")

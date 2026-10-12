@@ -94,6 +94,24 @@ class NoteEditViewModelTest {
         val vm = editor("n1")
         advanceUntilIdle()
         assertThat(vm.id).isEqualTo("n1")
+        assertThat(vm.readFailed.value).isTrue()
+        assertThat(vm.loaded.value).isFalse()
+        assertThat(saves).isEmpty()
+    }
+
+    @Test fun aNoteThatCouldNotBeReadIsNeverSavedOver() = runTest(dispatcher) {
+        notes["n1"] = NoteEntity("n1", "Kept", "safe", 0, 0)
+        failReads = true
+        val vm = editor("n1")
+        advanceUntilIdle()
+        vm.onBody("x") // a keystroke, though the screen shows no editor in this state
+        advanceUntilIdle()
+        hooks.single().invoke() // a lock
+        vm.saveNow() // leaving the editor
+        store.clear() // the view model going
+        advanceUntilIdle()
+        assertThat(saves).isEmpty()
+        assertThat(notes.getValue("n1").body).isEqualTo("safe")
     }
 
     @Test fun aNoteDeletedElsewhereIsEditedAsANewOne() = runTest(dispatcher) {

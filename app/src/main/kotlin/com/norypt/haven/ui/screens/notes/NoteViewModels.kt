@@ -114,16 +114,24 @@ class NoteEditViewModel(private val deps: NoteEditDeps, initialId: String?) : Vi
     private var lastStored: Pair<String, String>? = null
     private val unregisterBeforeLock = deps.addBeforeLock { saveNow() }
 
+    private val _readFailed = MutableStateFlow(false)
+    /** The note could not be read. The editor stays unloaded, so nothing can be saved over it. */
+    val readFailed: StateFlow<Boolean> = _readFailed.asStateFlow()
+
     init {
         if (initialId != null) viewModelScope.launch {
-            val note = runCatching { deps.get(initialId) }
-            note.getOrNull()?.let {
-                title.value = it.title; body.value = it.body; _updatedAt.value = it.updatedAt
-                lastStored = it.title to it.body
+            val note = runCatching { deps.get(initialId) }.getOrElse {
+                // Never loaded means never saved: an empty editor must not overwrite the stored note.
+                _readFailed.value = true
+                return@launch
             }
-            // Only a note that is really gone (deleted elsewhere) is edited as a new one; a failed
-            // read keeps the id, so a later save cannot leave a duplicate behind.
-            if (note.isSuccess && note.getOrNull() == null) id = null
+            if (note != null) {
+                title.value = note.title; body.value = note.body; _updatedAt.value = note.updatedAt
+                lastStored = note.title to note.body
+            } else {
+                // Gone (deleted elsewhere): edit it as a new note instead of recreating an empty one.
+                id = null
+            }
             loaded.value = true
         }
     }
