@@ -112,7 +112,7 @@ internal fun PhotosContent(nav: NavHostController, header: @Composable () -> Uni
     val selectionMode = selected.isNotEmpty()
     BackHandler(enabled = selectionMode) { vm.clearSelection() }
 
-    val addPhotos = rememberAddPhotos(container.lockController) { picked ->
+    val addPhotos = rememberAddPhotos(container.lockController, keeperOpen = { container.session.passwordsOrNull() != null }) { picked ->
         if (picked != null) PickedForImport.set(picked) else PickedForImport.clear()
         nav.navigate(Routes.PHOTO_IMPORT)
     }
@@ -314,48 +314,46 @@ private fun PhotosEmptyState(onAdd: () -> Unit) {
 /**
  * "Add photos": on Android 13+ asks to see the gallery so the originals can be deleted after
  * import; refused (or Android 12) falls back to the system photo picker, which needs no permission
- * but cannot delete. Every system dialog is wrapped so the auto-lock does not fire behind it.
- * [onReady] receives the picker's photos, or null when Haven may read the gallery itself.
+ * but cannot delete. Each system screen is an [Excursion], so the auto-lock does not fire behind
+ * it and a second tap while one is open does nothing. Results that arrive after the keeper closed
+ * are dropped. [onReady] receives the picker's photos, or null when Haven may read the gallery itself.
  */
 @Composable
-private fun rememberAddPhotos(lock: LockController, onReady: (List<Uri>?) -> Unit): () -> Unit {
+private fun rememberAddPhotos(lock: LockController, keeperOpen: () -> Boolean, onReady: (List<Uri>?) -> Unit): () -> Unit {
+    val pickerTrip = rememberExcursion(lock)
+    val permissionTrip = rememberExcursion(lock)
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(MAX_PICK)) { uris ->
-        lock.endSystemInteraction()
-        if (uris.isNotEmpty()) onReady(uris)
+        if (pickerTrip.end() && keeperOpen() && uris.isNotEmpty()) onReady(uris)
     }
-    val launchPicker: () -> Unit = { launchGuarded(lock) { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) } }
+    val launchPicker: () -> Unit = { pickerTrip.launch { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) } }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
-        lock.endSystemInteraction()
+        if (!permissionTrip.end() || !keeperOpen()) return@rememberLauncherForActivityResult
         if (grants.values.any { it }) onReady(null) else launchPicker()
     }
     return {
-        if (Build.VERSION.SDK_INT >= 33) {
-            val perms = buildList {
-                add(Manifest.permission.READ_MEDIA_IMAGES)
-                if (Build.VERSION.SDK_INT >= 34) add(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
+        if (!pickerTrip.open && !permissionTrip.open) {
+            if (Build.VERSION.SDK_INT >= 33) {
+                val perms = buildList {
+                    add(Manifest.permission.READ_MEDIA_IMAGES)
+                    if (Build.VERSION.SDK_INT >= 34) add(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
+                }
+                permissionTrip.launch { permission.launch(perms.toTypedArray()) }
+            } else {
+                launchPicker()
             }
-            launchGuarded(lock) { permission.launch(perms.toTypedArray()) }
-        } else {
-            launchPicker()
         }
     }
 }
 
 /** The system photo picker, for screens that launch it themselves (the import screen's fallback). */
 @Composable
-internal fun rememberSystemPicker(lock: LockController, onPicked: (List<Uri>) -> Unit): () -> Unit {
+internal fun rememberSystemPicker(lock: LockController, keeperOpen: () -> Boolean, onPicked: (List<Uri>) -> Unit): () -> Unit {
+    val trip = rememberExcursion(lock)
     val picker: ManagedActivityResultLauncher<PickVisualMediaRequest, List<Uri>> =
         rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(MAX_PICK)) { uris ->
-            lock.endSystemInteraction()
-            if (uris.isNotEmpty()) onPicked(uris)
+            if (trip.end() && keeperOpen() && uris.isNotEmpty()) onPicked(uris)
         }
-    return { launchGuarded(lock) { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }; Unit }
-}
-
-/** Opens a system screen as a deliberate excursion; if it cannot open, the excursion ends at once. Returns whether it opened. */
-internal fun launchGuarded(lock: LockController, launch: () -> Unit): Boolean {
-    lock.beginSystemInteraction()
-    return runCatching(launch).onFailure { lock.endSystemInteraction() }.isSuccess
+    return { trip.launch { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }; Unit }
 }
 
 internal fun photoCount(n: Int) = if (n == 1) "1 photo" else "$n photos"

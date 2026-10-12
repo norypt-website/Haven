@@ -35,6 +35,10 @@ import com.norypt.haven.ui.components.HeroStat
 import com.norypt.haven.ui.screens.passwords.PasswordVaultGate
 import com.norypt.haven.ui.screens.passwords.PasswordsContent
 import com.norypt.haven.ui.screens.photos.PhotosContent
+import com.norypt.haven.ui.screens.photos.observeCountSafely
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 
 /**
  * The Vault tab: passwords and hidden photos, both behind the keeper password. A brand hero with
@@ -45,8 +49,9 @@ fun VaultScreen(nav: NavHostController) {
     PasswordVaultGate(nav) {
         val container = LocalAppContainer.current
         var segment by rememberSaveable { mutableStateOf(VaultSegment.PASSWORDS) }
-        val passwordCount by remember { container.passwords.observeCount() }.collectAsState(initial = null)
-        val photoCount by remember { container.photos.observeCount() }.collectAsState(initial = null)
+        // Built lazily and caught, like the list view models: a closed keeper shows no count instead of crashing.
+        val passwordCount by remember { flow<Int?> { emitAll(container.passwords.observeCount()) }.catch { emit(null) } }.collectAsState(initial = null)
+        val photoCount by remember { container.photos.observeCountSafely() }.collectAsState(initial = null)
         val header: @Composable () -> Unit = {
             Column {
                 VaultHero(passwordCount, photoCount)

@@ -14,7 +14,11 @@ import com.norypt.haven.photos.PhotoVault
 import com.norypt.haven.security.SafeLog
 import com.norypt.haven.storage.passwords.PhotoEntity
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
@@ -53,8 +57,20 @@ internal fun monthGroups(photos: List<PhotoEntity>, zone: ZoneId = ZoneId.system
 internal fun spokenDate(epochMs: Long, zone: ZoneId = ZoneId.systemDefault()): String =
     DateTimeFormatter.ofPattern("d MMMM yyyy").format(Instant.ofEpochMilli(epochMs).atZone(zone))
 
+/**
+ * All photos in grid order. Built lazily inside `flow {}` (the DAO is resolved on collection, so a
+ * re-opened keeper gets the live connection) and a closed keeper reads as an empty vault instead of
+ * crashing the collector, the same pattern as the password list.
+ */
+internal fun PhotoVault.observeSorted(): Flow<List<PhotoEntity>> =
+    flow { emitAll(observeAll()) }.map { sortedForGrid(it) }.catch { emit(emptyList()) }
+
+/** The photo count, or nothing while the keeper is closed (same safe pattern as [observeSorted]). */
+internal fun PhotoVault.observeCountSafely(): Flow<Int?> =
+    flow<Int?> { emitAll(observeCount()) }.catch { emit(null) }
+
 class PhotosViewModel(private val vault: PhotoVault) : ViewModel() {
-    val photos: StateFlow<List<PhotoEntity>?> = vault.observeAll().map { sortedForGrid(it) }
+    val photos: StateFlow<List<PhotoEntity>?> = vault.observeSorted()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     val selected = MutableStateFlow<Set<String>>(emptySet())
 
@@ -166,6 +182,12 @@ class PhotoImportViewModel(
                     withContext(Dispatchers.IO) { bytes = readBounded(uri) }
                     val b = bytes
                     if (b == null) PhotoVault.ImportResult.Refused("Larger than 64 MB or unreadable.") else vault.import(b, takenAt)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // Anything the vault did not turn into a refusal itself: one photo fails, the import goes on.
+                    SafeLog.e("PhotoImport", "import failed", e)
+                    PhotoVault.ImportResult.Refused("Could not save the photo.")
                 } finally {
                     bytes?.fill(0)
                 }
@@ -208,12 +230,17 @@ class PhotoImportViewModel(
     private fun readExactly(input: InputStream, size: Int, chunk: ByteArray): ByteArray? {
         val out = ByteArray(size)
         var filled = 0
-        while (filled < size) {
-            val n = input.read(out, filled, size - filled)
-            if (n < 0) break
-            filled += n
+        try {
+            while (filled < size) {
+                val n = input.read(out, filled, size - filled)
+                if (n < 0) break
+                filled += n
+            }
+            if (filled == size && input.read(chunk) < 0) return out
+        } catch (t: Throwable) {
+            out.fill(0) // a failed read must not leave a partial original behind
+            throw t
         }
-        if (filled == size && input.read(chunk) < 0) return out
         // Shorter or longer than announced: read it the slow way instead of trusting the size.
         out.fill(0)
         return null
@@ -247,7 +274,7 @@ class PhotoImportViewModel(
 }
 
 class PhotoViewerViewModel(private val vault: PhotoVault) : ViewModel() {
-    val photos: StateFlow<List<PhotoEntity>?> = vault.observeAll().map { sortedForGrid(it) }
+    val photos: StateFlow<List<PhotoEntity>?> = vault.observeSorted()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /** The decoded photo, or null when it cannot be opened (keeper closed, damaged file, unsupported). */

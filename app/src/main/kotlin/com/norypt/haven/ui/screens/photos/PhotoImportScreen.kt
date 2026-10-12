@@ -124,22 +124,23 @@ private fun ImportContent(nav: NavHostController) {
     // Photos from the system picker are not MediaStore items Haven may delete.
     val canDelete = !vm.fromPicker && Build.VERSION.SDK_INT >= 33
 
+    val keeperOpen = { container.session.passwordsOrNull() != null }
+    val deleteTrip = rememberExcursion(container.lockController)
     val deleteLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { r ->
-        container.lockController.endSystemInteraction()
-        vm.deleteResult.value = r.resultCode == Activity.RESULT_OK
+        if (deleteTrip.end() && keeperOpen()) vm.deleteResult.value = r.resultCode == Activity.RESULT_OK
     }
     LaunchedEffect(progress?.finished) {
         val p = progress ?: return@LaunchedEffect
-        if (!p.finished || !canDelete || p.imported.isEmpty() || vm.deleteRequested) return@LaunchedEffect
+        if (!p.finished || !canDelete || p.imported.isEmpty() || vm.deleteRequested || !keeperOpen()) return@LaunchedEffect
         vm.deleteRequested = true
-        val asked = launchGuarded(container.lockController) {
+        val asked = deleteTrip.launch {
             val sender = MediaStore.createDeleteRequest(context.contentResolver, p.imported).intentSender
             deleteLauncher.launch(IntentSenderRequest.Builder(sender).build())
         }
         // Android could not ask (for example the items vanished meanwhile): report the originals as kept.
         if (!asked) vm.deleteResult.value = false
     }
-    val systemPicker = rememberSystemPicker(container.lockController) { vm.importPicked(it) }
+    val systemPicker = rememberSystemPicker(container.lockController, keeperOpen) { vm.importPicked(it) }
 
     Scaffold(
         topBar = {

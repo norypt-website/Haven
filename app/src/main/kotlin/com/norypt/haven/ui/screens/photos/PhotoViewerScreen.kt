@@ -139,14 +139,14 @@ private fun ViewerContent(nav: NavHostController, startId: String) {
         // A deleted or swiped-away page takes its zoom with it.
         LaunchedEffect(current.id) { zoomed = false }
 
-        val restore: () -> Unit = {
-            val p = current
+        val restoreOf: (PhotoEntity) -> Unit = { p ->
             busy = true
             scope.launch {
                 val ok = try { vm.restore(context, p) } finally { busy = false }
                 if (ok) askRemove = p else snackbar.showSnackbar("Could not save the photo to the gallery.")
             }
         }
+        val restore: () -> Unit = { restoreOf(current) }
 
         HorizontalPager(
             state = pager,
@@ -166,7 +166,7 @@ private fun ViewerContent(nav: NavHostController, startId: String) {
                 onTap = { chrome = !chrome },
                 onZoomChange = { if (pager.settledPage == page) zoomed = it },
                 actions = listOf(
-                    CustomAccessibilityAction("Restore to gallery") { if (!busy) restore(); true },
+                    CustomAccessibilityAction("Restore to gallery") { if (!busy) restoreOf(p); true },
                     CustomAccessibilityAction("Delete photo") { confirmDelete = p; true },
                 ),
             )
