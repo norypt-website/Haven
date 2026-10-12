@@ -8,9 +8,11 @@ import android.hardware.biometrics.BiometricPrompt
 import android.os.CancellationSignal
 import androidx.activity.compose.LocalActivity
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.norypt.haven.security.LockController
+import com.norypt.haven.ui.LocalAppContainer
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
@@ -44,6 +46,22 @@ suspend fun confirmDeviceCredential(activity: Activity, title: String): Boolean 
         prompt.authenticate(signal, ContextCompat.getMainExecutor(activity), callback)
     } catch (t: Throwable) {
         if (cont.isActive) cont.resume(false)
+    }
+}
+
+/**
+ * The device screen-lock confirmation for this screen, for [com.norypt.haven.session.retryWithDeviceAuth]
+ * and for setup. Returns false when there is no activity to show the prompt from.
+ */
+@Composable
+fun rememberDeviceAuth(): suspend () -> Boolean {
+    val container = LocalAppContainer.current
+    val activity = currentActivity()
+    return remember(activity) {
+        val confirm: suspend () -> Boolean = {
+            activity != null && container.lockController.duringSystemInteraction { confirmDeviceCredential(activity, "Confirm device screen lock") }
+        }
+        confirm
     }
 }
 

@@ -45,6 +45,7 @@ private val CLIPBOARD_CHOICES = listOf(15, 30, 45, 60, 120)
 fun SecuritySettingsScreen(nav: NavHostController) {
     val container = LocalAppContainer.current
     val vm: SecurityViewModel = viewModel { SecurityViewModel(container) }
+    val deviceAuth = rememberDeviceAuth()
 
     Column(Modifier.fillMaxSize()) {
         HavenTopBar(title = "Security", onBack = { nav.up() })
@@ -204,7 +205,7 @@ fun SecuritySettingsScreen(nav: NavHostController) {
             },
             busy = vm.busy,
             error = vm.dialogError,
-            onConfirm = vm::submitPassword,
+            onConfirm = { vm.submitPassword(it, deviceAuth) },
             onDismiss = vm::cancel,
         )
         SecurityViewModel.Step.CONFIRM -> when (vm.action) {
@@ -244,6 +245,7 @@ private fun DangerButton(label: String, enabled: Boolean, onClick: () -> Unit) {
 
 @Composable
 private fun ChangePasswordDialog(vm: SecurityViewModel) {
+    val deviceAuth = rememberDeviceAuth()
     val waitMs = rememberPasswordWaitMs(LocalAppContainer.current.throttle)
     AlertDialog(
         onDismissRequest = { if (!vm.busy) vm.closeChangePassword() },
@@ -259,14 +261,14 @@ private fun ChangePasswordDialog(vm: SecurityViewModel) {
                 PasswordField(
                     vm.confirmPassword, { if (!vm.busy) vm.confirmPassword = it }, label = "Confirm new password",
                     isError = vm.confirmPassword.isNotEmpty() && vm.confirmPassword != vm.newPassword,
-                    onDone = vm::changePassword,
+                    onDone = { vm.changePassword(deviceAuth) },
                 )
                 vm.changeError?.let { Spacer(Modifier.height(8.dp)); Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
                 PasswordWaitLine(waitMs, Modifier.padding(top = 4.dp))
                 if (vm.busy) BusyRow("Re-wrapping vault keys…")
             }
         },
-        confirmButton = { Button(onClick = vm::changePassword, enabled = !vm.busy && waitMs == 0L) { Text("Change") } },
+        confirmButton = { Button(onClick = { vm.changePassword(deviceAuth) }, enabled = !vm.busy && waitMs == 0L) { Text("Change") } },
         dismissButton = { TextButton(onClick = vm::closeChangePassword, enabled = !vm.busy) { Text("Cancel") } },
     )
 }

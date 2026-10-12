@@ -51,7 +51,12 @@ class SetupViewModel(private val container: AppContainer) : ViewModel() {
         suggestion?.let { password = it; confirm = it }
     }
 
-    fun create() {
+    /**
+     * [deviceAuth] runs the system device-credential prompt. With [requireDeviceAuth] the new
+     * Keystore keys can only be used shortly after the screen lock is confirmed, so it is asked for
+     * right before the keys are created.
+     */
+    fun create(deviceAuth: suspend () -> Boolean) {
         if (busy || fatal) return
         error = null
         when {
@@ -64,6 +69,11 @@ class SetupViewModel(private val container: AppContainer) : ViewModel() {
             try {
                 phase = Phase.Measuring
                 val bench = container.session.benchmarkKdf()
+                if (requireDeviceAuth && !deviceAuth()) {
+                    phase = Phase.Editing
+                    error = "Your device screen lock was not confirmed. Confirm it, or untick the screen lock option."
+                    return@launch
+                }
                 phase = Phase.Creating
                 container.session.setUp(chars, requireDeviceAuth, bench.params)
                 container.prefs.requireDeviceAuth = requireDeviceAuth
@@ -74,6 +84,9 @@ class SetupViewModel(private val container: AppContainer) : ViewModel() {
                 phase = Phase.Editing
                 fatal = true
                 error = "This device cannot provide a hardware-backed key. Haven does not fall back to software keys."
+            } catch (e: VaultCryptoException.DeviceAuthenticationRequired) {
+                phase = Phase.Editing
+                error = "Your device screen lock was not confirmed in time. Try again."
             } catch (e: Exception) {
                 phase = Phase.Editing
                 error = "Could not create the vault (${e.javaClass.simpleName})."

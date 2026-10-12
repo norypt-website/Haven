@@ -42,21 +42,15 @@ import com.norypt.haven.ui.components.FactRow
 import com.norypt.haven.ui.components.PasswordField
 import com.norypt.haven.ui.components.SectionCard
 import com.norypt.haven.ui.components.waitText
-import com.norypt.haven.ui.screens.settings.confirmDeviceCredential
-import com.norypt.haven.ui.screens.settings.currentActivity
-import com.norypt.haven.ui.screens.settings.duringSystemInteraction
+import com.norypt.haven.ui.screens.settings.rememberDeviceAuth
 
 @Composable
 fun UnlockScreen(onUnlocked: () -> Unit, onAbout: () -> Unit, onForgot: () -> Unit) {
     val container = LocalAppContainer.current
     val vm: UnlockViewModel = viewModel { UnlockViewModel(container) }
-    val activity = currentActivity()
     val focus = remember { FocusRequester() }
 
-    val deviceAuth: suspend () -> Boolean = {
-        val a = activity
-        if (a == null) false else container.lockController.duringSystemInteraction { confirmDeviceCredential(a, "Confirm device screen lock") }
-    }
+    val deviceAuth = rememberDeviceAuth()
     val submit = { vm.unlock(deviceAuth, onUnlocked) }
 
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }

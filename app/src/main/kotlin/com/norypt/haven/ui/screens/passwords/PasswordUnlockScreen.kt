@@ -63,6 +63,7 @@ import com.norypt.haven.ui.components.brandBrush
 import com.norypt.haven.ui.components.PasswordField
 import com.norypt.haven.ui.components.ScreenPadding
 import com.norypt.haven.ui.navigation.Routes
+import com.norypt.haven.ui.screens.settings.rememberDeviceAuth
 import com.norypt.haven.ui.theme.LocalHavenColors
 import com.norypt.haven.ui.theme.NoryptColors
 import kotlinx.coroutines.delay
@@ -125,11 +126,12 @@ fun PasswordUnlockScreen(nav: NavHostController) {
     val busy = status is PasswordUnlockViewModel.Status.Busy
     val canSubmit = password.isNotEmpty() && !busy && wait == null
 
+    val deviceAuth = rememberDeviceAuth()
     fun submit() {
         if (!canSubmit) return
         val chars = password.toCharArray()
         password = ""
-        vm.unlock(chars)
+        vm.unlock(chars, deviceAuth)
     }
 
     Scaffold(topBar = { HavenTopBar("Password keeper", onBack = { leave() }) }) { padding ->

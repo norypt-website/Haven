@@ -56,7 +56,7 @@ fun refusalText(result: UnlockResult): String? = when (result) {
     UnlockResult.Success, UnlockResult.Erased -> null
     is UnlockResult.WrongPassword -> listOfNotNull("Wrong password.", attemptsLeftText(result.attemptsLeft)).joinToString(" ")
     is UnlockResult.Throttled -> "Too many wrong passwords. Try again in ${waitText(result.waitMs)}."
-    UnlockResult.DeviceAuthRequired -> "Confirm your device screen lock, then try again."
+    UnlockResult.DeviceAuthRequired -> "Your device screen lock was not confirmed. Try again."
     is UnlockResult.Unrecoverable -> result.reason
     is UnlockResult.Failed -> result.message
 }

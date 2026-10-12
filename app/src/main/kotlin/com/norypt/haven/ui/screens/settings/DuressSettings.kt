@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.norypt.haven.session.UnlockResult
+import com.norypt.haven.session.retryWithDeviceAuth
 import com.norypt.haven.ui.LocalAppContainer
 import com.norypt.haven.ui.components.ConfirmDialog
 import com.norypt.haven.ui.components.FactLevel
@@ -43,6 +44,7 @@ import kotlinx.coroutines.launch
 fun DuressPasswordSection(enabled: Boolean) {
     val container = LocalAppContainer.current
     val scope = rememberCoroutineScope()
+    val deviceAuth = rememberDeviceAuth()
     var configured by remember { mutableStateOf(container.session.hasDuressPassword()) }
     var showSet by remember { mutableStateOf(false) }
     var showRemove by remember { mutableStateOf(false) }
@@ -90,7 +92,7 @@ fun DuressPasswordSection(enabled: Boolean) {
                 else -> {
                     busy = true; error = null
                     scope.launch {
-                        val outcome = runCatching { container.session.setDuressPassword(real.toCharArray(), duress.toCharArray()) }
+                        val outcome = runCatching { retryWithDeviceAuth(deviceAuth) { container.session.setDuressPassword(real.toCharArray(), duress.toCharArray()) } }
                         busy = false
                         val result = outcome.getOrNull()
                         when {
@@ -144,7 +146,7 @@ fun DuressPasswordSection(enabled: Boolean) {
                 busy = true
                 removeError = null
                 scope.launch {
-                    val outcome = runCatching { container.session.clearDuressPassword(chars) }
+                    val outcome = runCatching { retryWithDeviceAuth(deviceAuth) { container.session.clearDuressPassword(chars) } }
                     java.util.Arrays.fill(chars, '\u0000')
                     busy = false
                     val result = outcome.getOrNull()

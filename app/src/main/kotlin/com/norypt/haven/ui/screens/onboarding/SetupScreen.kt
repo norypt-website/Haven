@@ -38,6 +38,7 @@ import com.norypt.haven.ui.components.FactRow
 import com.norypt.haven.ui.components.HavenTopBar
 import com.norypt.haven.ui.components.PasswordField
 import com.norypt.haven.ui.components.SectionCard
+import com.norypt.haven.ui.screens.settings.rememberDeviceAuth
 
 @Composable
 fun SetupScreen(onDone: () -> Unit) {
@@ -58,6 +59,7 @@ fun SetupScreen(onDone: () -> Unit) {
 @Composable
 private fun SetupForm(vm: SetupViewModel) {
     val enabled = !vm.busy && !vm.fatal
+    val deviceAuth = rememberDeviceAuth()
     Text(
         "This password protects everything in Haven. Use a long passphrase. Spaces are fine. Haven never trims or changes it.",
         style = MaterialTheme.typography.bodyMedium,
@@ -78,7 +80,7 @@ private fun SetupForm(vm: SetupViewModel) {
         label = "Confirm password",
         isError = vm.confirm.isNotEmpty() && vm.confirm != vm.password,
         supportingText = if (vm.confirm.isNotEmpty() && vm.confirm != vm.password) "Does not match" else null,
-        onDone = { if (enabled) vm.create() },
+        onDone = { if (enabled) vm.create(deviceAuth) },
     )
     Spacer(Modifier.height(8.dp))
     OutlinedButton(onClick = vm::suggest, enabled = enabled, modifier = Modifier.heightIn(min = 48.dp)) {
@@ -137,7 +139,7 @@ private fun SetupForm(vm: SetupViewModel) {
             )
         }
     }
-    Button(onClick = vm::create, enabled = enabled, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+    Button(onClick = { vm.create(deviceAuth) }, enabled = enabled, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
         Text("Create vault")
     }
     Spacer(Modifier.height(8.dp))

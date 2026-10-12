@@ -84,7 +84,7 @@ Release builds are signed out of tree with a `keystore.properties` that never en
 
 ## Status
 
-Version 0.1.4 is feature-complete for its v1 scope. 218 JVM unit tests and the instrumented
+Version 0.1.5 is feature-complete for its v1 scope. 222 JVM unit tests and the instrumented
 Keystore/SQLCipher suites pass. StrongBox keys, Direct Boot ringing, Doze and battery-saver
 delivery, the duress wipe, the automatic erase after wrong passwords and the full
 backup → wipe → restore cycle were verified on Pixel 9 and Pixel 9a phones running Android 17,

@@ -1,5 +1,7 @@
 package com.norypt.haven.ui
 
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Alarm
@@ -174,7 +176,14 @@ fun HavenApp(container: AppContainer, initialOccurrenceId: String?) {
                     else -> Routes.TODAY
                 }
             }
-            NavHost(navController = nav, startDestination = start, modifier = Modifier.padding(padding)) {
+            // Edge-to-edge means adjustResize no longer shrinks the window, so the keyboard inset is
+            // applied here once for every screen. Consuming the bottom bar's padding first keeps the
+            // two from stacking; screens then scroll the focused field into the space left above it.
+            NavHost(
+                navController = nav,
+                startDestination = start,
+                modifier = Modifier.padding(padding).consumeWindowInsets(padding).imePadding(),
+            ) {
                 composable(Routes.WELCOME) { WelcomeScreen(onContinue = { nav.navigate(Routes.SETUP) }) }
                 composable(Routes.SETUP) { SetupScreen(onDone = { nav.navigate(Routes.TODAY) { popUpTo(0) { inclusive = true } } }) }
                 composable(Routes.UNLOCK) { UnlockScreen(onUnlocked = { nav.navigate(Routes.TODAY) { popUpTo(0) { inclusive = true } } }, onAbout = { nav.navigate(Routes.ABOUT) }, onForgot = { nav.navigate(Routes.FORGOT_PASSWORD) }) }

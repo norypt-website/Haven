@@ -17,6 +17,7 @@ import com.norypt.haven.di.AppContainer
 import com.norypt.haven.security.GuessThrottle
 import com.norypt.haven.security.SessionState
 import com.norypt.haven.session.UnlockResult
+import com.norypt.haven.session.retryWithDeviceAuth
 import com.norypt.haven.session.VaultSession
 import com.norypt.haven.storage.passwords.FolderEntity
 import com.norypt.haven.storage.passwords.PasswordEntryEntity
@@ -112,13 +113,16 @@ class PasswordUnlockViewModel(private val session: VaultSession, private val thr
         return if (wait > 0) Status.Wait(System.currentTimeMillis() + wait, "Too many wrong passwords.") else Status.Idle
     }
 
-    /** Takes ownership of [password] and wipes it once the attempt has finished. */
-    fun unlock(password: CharArray) {
+    /**
+     * Takes ownership of [password] and wipes it once the attempt has finished. [deviceAuth] runs
+     * the device screen-lock prompt when the keeper's Keystore key asks for it.
+     */
+    fun unlock(password: CharArray, deviceAuth: suspend () -> Boolean) {
         if (_status.value is Status.Busy) { password.fill('\u0000'); return }
         _status.value = Status.Busy
         viewModelScope.launch {
             val result = try {
-                withContext(NonCancellable) { session.unlockPasswords(password) }
+                retryWithDeviceAuth(deviceAuth) { withContext(NonCancellable) { session.unlockPasswords(password) } }
             } catch (e: Exception) {
                 UnlockResult.Failed("Could not open the keeper (${e.javaClass.simpleName}).")
             } finally {
@@ -134,7 +138,7 @@ class PasswordUnlockViewModel(private val session: VaultSession, private val thr
                 is UnlockResult.Throttled -> Status.Wait(now + result.waitMs, "Too many wrong passwords.")
                 // The vault is gone and Haven is back at first run; navigation moves to Welcome.
                 UnlockResult.Erased -> Status.Message("Haven erased this vault after too many wrong passwords.")
-                UnlockResult.DeviceAuthRequired -> Status.Message("Confirm your device screen lock, then try again.")
+                UnlockResult.DeviceAuthRequired -> Status.Message("Your device screen lock was not confirmed. Try again.")
                 is UnlockResult.Unrecoverable -> Status.Message(result.reason)
                 is UnlockResult.Failed -> Status.Message(result.message)
             }

@@ -47,6 +47,7 @@ import com.norypt.haven.crypto.VaultKeyEnvelope
 import com.norypt.haven.di.AppContainer
 import com.norypt.haven.security.EraseAfterFailures
 import com.norypt.haven.session.UnlockResult
+import com.norypt.haven.session.retryWithDeviceAuth
 import com.norypt.haven.ui.components.FactLevel
 import com.norypt.haven.ui.components.PasswordField
 import com.norypt.haven.ui.LocalAppContainer
@@ -252,7 +253,8 @@ class SecurityViewModel(private val container: AppContainer) : ViewModel() {
     fun openChangePassword() { changeError = null; showChangePassword = true }
     fun closeChangePassword() { showChangePassword = false; currentPassword = ""; newPassword = ""; confirmPassword = ""; changeError = null }
 
-    fun changePassword() {
+    /** [deviceAuth] runs the device screen-lock prompt when a Keystore key asks for it. */
+    fun changePassword(deviceAuth: suspend () -> Boolean) {
         if (busy || container.throttle.remainingDelayMs() > 0) return
         changeError = null
         when {
@@ -267,7 +269,7 @@ class SecurityViewModel(private val container: AppContainer) : ViewModel() {
             val old = currentPassword.toCharArray()
             val new = newPassword.toCharArray()
             try {
-                val result = container.session.changePassword(old, new, params)
+                val result = retryWithDeviceAuth(deviceAuth) { container.session.changePassword(old, new, params) }
                 if (result == UnlockResult.Success) {
                     closeChangePassword()
                     notice = "Password changed. Existing backups still open with the passphrase they were made with."
@@ -329,8 +331,11 @@ class SecurityViewModel(private val container: AppContainer) : ViewModel() {
         action = null; step = Step.NONE; dialogError = null; eraseTyped = ""
     }
 
-    /** Step 1: fresh authentication with the Haven password. */
-    fun submitPassword(chars: CharArray) {
+    /**
+     * Step 1: fresh authentication with the Haven password. [deviceAuth] runs the device
+     * screen-lock prompt when a Keystore key asks for it (always when the option is switched).
+     */
+    fun submitPassword(chars: CharArray, deviceAuth: suspend () -> Boolean) {
         val a = action ?: run { chars.fill('\u0000'); return }
         busy = true
         dialogError = null
@@ -338,7 +343,7 @@ class SecurityViewModel(private val container: AppContainer) : ViewModel() {
             try {
                 when (a) {
                     Action.DEVICE_AUTH -> {
-                        val result = container.session.setDeviceAuthRequirement(chars, pendingDeviceAuthValue)
+                        val result = retryWithDeviceAuth(deviceAuth) { container.session.setDeviceAuthRequirement(chars, pendingDeviceAuthValue) }
                         if (result == UnlockResult.Success) {
                             container.prefs.requireDeviceAuth = pendingDeviceAuthValue
                             requireDeviceAuth = pendingDeviceAuthValue
@@ -350,7 +355,7 @@ class SecurityViewModel(private val container: AppContainer) : ViewModel() {
                         }
                     }
                     Action.ERASE_LIMIT -> {
-                        val result = container.session.verifyPassword(chars)
+                        val result = retryWithDeviceAuth(deviceAuth) { container.session.verifyPassword(chars) }
                         if (result == UnlockResult.Success) {
                             applyEraseLimit(pendingEraseLimit)
                             action = null; step = Step.NONE
@@ -359,7 +364,7 @@ class SecurityViewModel(private val container: AppContainer) : ViewModel() {
                         }
                     }
                     else -> {
-                        val result = container.session.verifyPassword(chars)
+                        val result = retryWithDeviceAuth(deviceAuth) { container.session.verifyPassword(chars) }
                         if (result == UnlockResult.Success) step = Step.CONFIRM else dialogError = refusalText(result)
                     }
                 }
