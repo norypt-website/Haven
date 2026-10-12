@@ -111,6 +111,9 @@ class VaultSession(
     /** Opens the keeper database with its raw key. Replaced only by JVM tests, which have no SQLCipher. */
     internal var openKeeperDatabase: (Context, ByteArray) -> PasswordDatabase = PasswordDatabase::open
 
+    /** Opens the content database on unlock. Replaced only by JVM tests, which have no SQLCipher. */
+    internal var openContentDatabase: (Context, ByteArray) -> ContentDatabase = ContentDatabase::open
+
     fun isInitialised(): Boolean = keys.isInitialised()
 
     fun content(): ContentDatabase = contentDb ?: throw VaultLockedException()
@@ -180,7 +183,7 @@ class VaultSession(
                 hardwareLevel = key.hwLevel
                 if (vaultId == VaultIds.CONTENT) {
                     contentDb?.close()
-                    contentDb = ContentDatabase.open(context, key.bytes())
+                    contentDb = openContentDatabase(context, key.bytes())
                 } else {
                     passwordDb?.close()
                     passwordDb = openKeeperDatabase(context, key.bytes())
@@ -442,6 +445,7 @@ class VaultSession(
         keys.duressScramble()
         // A rename only (the delete runs on its own thread), so the entry still takes as long as a wrong password.
         PhotoFileStore.retireAsync(EncryptedDatabaseOpener.photoDir(context))
+        PhotoFileStore.retireAsync(PhotoFileStore.stagingDir(EncryptedDatabaseOpener.photoDir(context)))
         notifyKeeperClosed()
     }
 
@@ -468,6 +472,8 @@ class VaultSession(
             val photoDir = EncryptedDatabaseOpener.photoDir(context)
             PhotoFileStore(photoDir).reconcile(emptySet())
             photoDir.deleteRecursively()
+            // A restore cut short leaves its staged photos here.
+            PhotoFileStore.stagingDir(photoDir).deleteRecursively()
             // The vault is already unreadable here; an alarm that cannot be cancelled must not stop the rest.
             try {
                 alarmRuntime.scheduler.removeAll()

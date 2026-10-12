@@ -118,3 +118,22 @@ fun unlockedTestSession(
     check(result == UnlockResult.Success) { "test keeper did not open: $result" }
     return session
 }
+
+/**
+ * Like [unlockedTestSession], with the content vault open too. Both databases are plain SQLite
+ * Room files in [dir] (same queries as SQLCipher).
+ */
+fun fullyUnlockedTestSession(
+    app: android.app.Application,
+    dir: java.io.File,
+    password: String = "test password",
+    onKeeperClosed: () -> Unit = {},
+): VaultSession {
+    val session = unlockedTestSession(app, dir, password, onKeeperClosed = onKeeperClosed)
+    session.openContentDatabase = { context, _ ->
+        androidx.room.Room.databaseBuilder(context, com.norypt.haven.storage.content.ContentDatabase::class.java, java.io.File(dir, "content.db").path).build()
+    }
+    val result = kotlinx.coroutines.runBlocking { session.unlockContent(password.toCharArray()) }
+    check(result == UnlockResult.Success) { "test content vault did not open: $result" }
+    return session
+}

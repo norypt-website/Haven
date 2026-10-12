@@ -110,7 +110,7 @@ fun BackupScreen(nav: NavHostController) {
     if (vm.showRestoreConfirm) {
         ConfirmDialog(
             title = "Replace everything in this vault with the backup?",
-            body = "All current reminders, tasks and lists" + (if (vm.restorePasswords) ", passwords and folders" else "") + " on this device will be replaced by the contents of the backup file. Alarms are rebuilt from the restored reminders.",
+            body = "All current reminders, tasks, lists and notes" + (if (vm.restorePasswords) ", passwords, folders and photos" else "") + " on this device will be replaced by the contents of the backup file. Alarms are rebuilt from the restored reminders.",
             confirmLabel = "Replace and restore",
             onConfirm = vm::restore,
             onDismiss = { vm.showRestoreConfirm = false },
@@ -181,7 +181,10 @@ private fun CreateBackupSection(vm: BackupViewModel, nav: NavHostController) {
             onDone = vm::export,
         )
         Spacer(Modifier.height(4.dp))
-        SwitchRow("Include password keeper", vm.includePasswords, enabled = !vm.exporting) { vm.includePasswords = it }
+        SwitchRow("Include Vault (passwords and photos)", vm.includePasswords, enabled = !vm.exporting) { vm.includePasswords = it }
+        if (vm.includePasswords) {
+            Text("Photos make backups large.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         if (vm.includePasswords && !vm.keeperUnlocked) {
             Text("The password keeper is locked.", style = MaterialTheme.typography.bodyMedium)
             OutlinedButton(onClick = { nav.navigate(Routes.PASSWORD_UNLOCK) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Unlock keeper") }
@@ -239,7 +242,7 @@ private fun RestoreSection(vm: BackupViewModel, nav: NavHostController, onChoose
             )
             Spacer(Modifier.height(4.dp))
             val hasPasswords = "passwords" in h.contents
-            SwitchRow("Also restore passwords", vm.restorePasswords && hasPasswords, enabled = hasPasswords && !vm.restoring, detail = if (hasPasswords) "Needs the password keeper unlocked." else "This backup contains no passwords.") { vm.restorePasswords = it }
+            SwitchRow("Restore Vault (passwords and photos)", vm.restorePasswords && hasPasswords, enabled = hasPasswords && !vm.restoring, detail = if (hasPasswords) "Needs the password keeper unlocked." else "This backup contains no passwords.") { vm.restorePasswords = it }
             if (vm.restorePasswords && hasPasswords && !vm.keeperUnlocked) {
                 Row { OutlinedButton(onClick = { nav.navigate(Routes.PASSWORD_UNLOCK) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Unlock keeper") }; Spacer(Modifier.width(8.dp)) }
             }

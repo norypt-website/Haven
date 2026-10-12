@@ -28,7 +28,8 @@ class BackupLocalUriTest {
         }
         val keys = VaultKeyManager(KeyringStore(File(ctx.cacheDir, "k.json")), fakeKdf, com.norypt.haven.crypto.AndroidKeystoreWrappingKeys(true))
         val session = VaultSession(ctx, keys, AlarmRuntime.get(ctx), GuessThrottle(), eraseLimit = { EraseAfterFailures.OFF }, onAutoErased = {}) {}
-        return BackupManager(ctx, session, AlarmRuntime.get(ctx))
+        val photos = com.norypt.haven.photos.PhotoVault(session, { com.norypt.haven.photos.PhotoFileStore(File(ctx.cacheDir, "photos")) }, com.norypt.haven.photos.AndroidPhotoImaging())
+        return BackupManager(ctx, session, AlarmRuntime.get(ctx), photos)
     }
 
     @Test fun onlyLocalDocumentProvidersAreAccepted() {

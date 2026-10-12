@@ -2,9 +2,12 @@ package com.norypt.haven.photos
 
 import android.util.LruCache
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.room.withTransaction
+import com.norypt.haven.backup.PhotoRecord
 import com.norypt.haven.crypto.PhotoCipher
 import com.norypt.haven.security.SafeLog
 import com.norypt.haven.session.VaultSession
+import com.norypt.haven.storage.passwords.PasswordDatabase
 import com.norypt.haven.storage.passwords.PhotoEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -12,6 +15,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.IOException
 import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -35,6 +39,9 @@ class PhotoVault(
 
     /** Keeps [reconcile] from deleting the files of an import whose row is not written yet. */
     private val files = Mutex()
+
+    /** The restore staging in progress, if any; [reconcile] leaves its directory alone. */
+    private var activeStaging: Staging? = null
 
     private fun dao() = session.passwords().photos()
 
@@ -113,6 +120,107 @@ class PhotoVault(
         store().open(photo.fileId, PhotoCipher.Kind.ORIGINAL).use { PhotoCipher.decrypt(photo.dek, photo.id, PhotoCipher.Kind.ORIGINAL, it) }
     }
 
+    /**
+     * The original bytes for a backup export, read only while [db] (the keeper the export started
+     * with) is still the open one. The caller wipes the array after use.
+     */
+    internal fun originalForExport(db: PasswordDatabase, photo: PhotoEntity): ByteArray {
+        check(session.passwordsOrNull() === db) { "keeper closed" }
+        return store().open(photo.fileId, PhotoCipher.Kind.ORIGINAL).use { PhotoCipher.decrypt(photo.dek, photo.id, PhotoCipher.Kind.ORIGINAL, it) }
+    }
+
+    /**
+     * Photos being restored from a backup. Each one is encrypted under a fresh key and file id into
+     * `photos.staging`, beside the live directory; nothing live changes until [commitStaging].
+     * The new keys exist only in memory until then, so a staging directory left by a crash is
+     * unreadable, and [reconcile] removes it.
+     */
+    inner class Staging internal constructor(internal val db: PasswordDatabase, internal val store: PhotoFileStore) {
+        private val staged = mutableListOf<PhotoEntity>()
+        val entities: List<PhotoEntity> get() = staged.toList()
+
+        /**
+         * Encrypts a restored photo under a fresh key and file id; the thumbnail is made again here.
+         * [bytes] is fully consumed before this returns, so the caller may wipe it at once.
+         * Throws [IllegalArgumentException] for bytes that are not a readable image and
+         * [IllegalStateException] when the keeper closed since [beginStaging].
+         */
+        fun add(record: PhotoRecord, bytes: ByteArray) {
+            check(session.passwordsOrNull() === db) { "keeper closed" }
+            require(bytes.isNotEmpty() && bytes.size <= ImageBounds.MAX_BYTES) { "photo in backup is empty or too large" }
+            val probe = requireNotNull(imaging.probe(bytes)) { "unreadable image in backup" }
+            val thumb = requireNotNull(imaging.thumbnail(bytes)) { "unreadable image in backup" }
+            val fileId = store.newFileId()
+            val dek = PhotoCipher.newDek()
+            try {
+                store.write(fileId, PhotoCipher.Kind.ORIGINAL) { PhotoCipher.encrypt(dek, record.id, PhotoCipher.Kind.ORIGINAL, bytes, it) }
+                store.write(fileId, PhotoCipher.Kind.THUMBNAIL) { PhotoCipher.encrypt(dek, record.id, PhotoCipher.Kind.THUMBNAIL, thumb, it) }
+                staged += PhotoEntity(record.id, fileId, dek.copyOf(), probe.mimeType, bytes.size.toLong(), probe.width, probe.height, record.takenAtEpochMs, record.addedAtEpochMs)
+            } catch (t: Throwable) {
+                store.delete(fileId)
+                throw t
+            } finally {
+                dek.fill(0)
+                thumb.fill(0)
+            }
+        }
+
+        /** Drops every staged photo: keys wiped, files deleted. Safe to call more than once. */
+        fun discard() {
+            staged.forEach { it.dek.fill(0) }
+            staged.clear()
+            store.deleteAll()
+            synchronized(this@PhotoVault) { if (activeStaging === this) activeStaging = null }
+        }
+    }
+
+    /** Starts a restore into an empty staging directory. Needs the keeper open; it must stay the same keeper until [commitStaging]. */
+    fun beginStaging(): Staging {
+        val db = session.passwords()
+        val dir = PhotoFileStore(PhotoFileStore.stagingDir(store().dir)).also { it.deleteAll() }
+        return Staging(db, dir).also { synchronized(this) { activeStaging = it } }
+    }
+
+    /**
+     * Replaces every photo with the staged ones and returns how many there are. Staged files are
+     * moved in first (their ids are new, so nothing live is touched), then one keeper transaction
+     * swaps the rows and runs [alsoInTransaction]; only after it commits are the old files deleted.
+     * A crash at any point leaves either the old or the new set, and [reconcile] removes the rest.
+     * Refused with [IllegalStateException] when the keeper is no longer the one staging began with.
+     * The staging is discarded afterwards, whatever the outcome.
+     */
+    suspend fun commitStaging(staging: Staging, alsoInTransaction: suspend (PasswordDatabase) -> Unit = {}): Int = withContext(Dispatchers.IO) {
+        try {
+            val db = staging.db
+            files.withLock {
+                check(session.passwordsOrNull() === db) { "keeper closed" }
+                val entities = staging.entities
+                val names = entities.flatMap { listOf(it.fileId, "${it.fileId}.t") }
+                names.forEach { if (!File(staging.store.dir, it).isFile) throw IOException("a staged photo file is missing") }
+                val live = store()
+                live.dir.mkdirs()
+                val old = db.photos().all()
+                try {
+                    names.forEach { if (!File(staging.store.dir, it).renameTo(File(live.dir, it))) throw IOException("move failed") }
+                    db.withTransaction {
+                        db.photos().deleteEverything()
+                        db.photos().insertAll(entities)
+                        alsoInTransaction(db)
+                    }
+                } catch (t: Throwable) {
+                    entities.forEach { live.delete(it.fileId) }
+                    throw t
+                }
+                // The old keys are gone with their rows: these files are unreadable already.
+                old.forEach { live.delete(it.fileId); it.dek.fill(0) }
+                clearCaches()
+                entities.size
+            }
+        } finally {
+            staging.discard()
+        }
+    }
+
     suspend fun delete(ids: Collection<String>): Unit = withContext(Dispatchers.IO) {
         if (ids.isEmpty()) return@withContext
         val db = session.passwords()
@@ -130,6 +238,8 @@ class PhotoVault(
         val db = session.passwordsOrNull() ?: return@withContext 0
         files.withLock {
             val s = store()
+            // Left by a restore that never finished; its keys died with it. A restore still running keeps its own.
+            if (synchronized(this@PhotoVault) { activeStaging == null }) PhotoFileStore.stagingDir(s.dir).deleteRecursively()
             val rows = db.photos().all()
             val missing = rows.filter { !File(s.dir, it.fileId).exists() }.map { it.id }
             if (missing.isNotEmpty()) db.photos().deleteAll(missing)

@@ -81,5 +81,5 @@ class AppContainer(val app: Application) {
     val passwords = PasswordRepository(session)
     val notes = NoteRepository(session)
     val photos = PhotoVault(session, { PhotoFileStore(EncryptedDatabaseOpener.photoDir(app)) }, AndroidPhotoImaging())
-    val backups = BackupManager(app, session, alarmRuntime)
+    val backups = BackupManager(app, session, alarmRuntime, photos)
 }

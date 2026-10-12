@@ -31,24 +31,10 @@ class PhotoVaultTest {
 
     @After fun tearDown() = AlarmRuntime.resetForTesting()
 
-    private class FakeImaging : PhotoImaging {
-        /** Runs inside [thumbnail], in the middle of an import. */
-        var duringThumbnail: () -> Unit = {}
-        /** Runs inside [decode], after the thumbnail was decrypted. */
-        var duringDecode: () -> Unit = {}
-        var decodes: Boolean = false
-        override fun probe(bytes: ByteArray) = if (bytes.isNotEmpty() && bytes[0] == 1.toByte()) Probe(40, 30, "image/jpeg") else null
-        override fun thumbnail(bytes: ByteArray): ByteArray { duringThumbnail(); return byteArrayOf(9, 9) }
-        override fun decode(bytes: ByteArray, maxSide: Int): ImageBitmap? { duringDecode(); return if (decodes) android.graphics.Bitmap.createBitmap(2, 2, android.graphics.Bitmap.Config.ARGB_8888).asImageBitmap() else null }
-    }
-
     private val imaging = FakeImaging()
 
-    private fun newVaultWithSession(onKeeperClosed: () -> Unit = {}): Triple<PhotoVault, PhotoFileStore, VaultSession> {
-        val session = unlockedTestSession(ApplicationProvider.getApplicationContext(), tmp.newFolder("keys"), password = PASSWORD, onKeeperClosed = onKeeperClosed)
-        val store = PhotoFileStore(File(tmp.root, "vaults/photos"))
-        return Triple(PhotoVault(session, { store }, imaging), store, session)
-    }
+    private fun newVaultWithSession(onKeeperClosed: () -> Unit = {}): Triple<PhotoVault, PhotoFileStore, VaultSession> =
+        newTestVault(tmp, imaging, onKeeperClosed)
 
     private fun newVault(): Pair<PhotoVault, PhotoFileStore> = newVaultWithSession().let { (v, s, _) -> v to s }
 
@@ -183,6 +169,6 @@ class PhotoVaultTest {
     }
 
     private companion object {
-        const val PASSWORD = "test password"
+        const val PASSWORD = TEST_PASSWORD
     }
 }

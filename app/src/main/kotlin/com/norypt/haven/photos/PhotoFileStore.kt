@@ -80,6 +80,12 @@ class PhotoFileStore(val dir: File, private val random: SecureRandom = SecureRan
         }
         private const val RETIRED_PREFIX = "photos.del-"
 
+        /** Name of the directory, beside the live one, that holds photos being restored from a backup. */
+        const val STAGING_DIR = "photos.staging"
+
+        /** The staging directory that belongs beside [liveDir]. */
+        fun stagingDir(liveDir: File): File = File(liveDir.parentFile, STAGING_DIR)
+
         /** Renames [dir] away at once, then deletes it on a background thread. */
         fun retireAsync(dir: File) {
             if (!dir.exists()) return

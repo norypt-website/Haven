@@ -592,7 +592,7 @@ class BackupViewModel(private val container: AppContainer) : ViewModel() {
                 when (val r = container.backups.restore(uri, chars, key, restorePasswords)) {
                     is RestoreResult.Success -> {
                         restoreOk = true
-                        restoreMessage = "Restored ${r.reminders} reminders, ${r.tasks} tasks and ${r.passwords} passwords."
+                        restoreMessage = "Restored ${r.reminders} reminders, ${r.tasks} tasks, ${r.notes} notes, ${r.passwords} passwords and ${r.photos} photos."
                         restoreUri = null; inspection = null; restoreKeyText = ""
                         restoredJustNow = true
                     }
