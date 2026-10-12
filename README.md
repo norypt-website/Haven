@@ -34,7 +34,7 @@ have even unlocked the phone.
 | ⏰ **Reminders that ring** | One-time and recurring (daily, weekly, monthly, yearly, every *N*, end rules), exact alarms with full-screen ringing, snooze presets, early "coming up" alerts, quick rescheduling, explicit time-zone and DST policies. |
 | ✅ **Tasks** | Lists, search, due dates, starring, priority levels, and a follow-up alarm if a task is still open after its due time. |
 | 📝 **Notes** | Quick private notes with search, saved as you leave the note. Stored in the encrypted content database, so they travel with backups. |
-| 🖼️ **Photo vault** | Import photos from the gallery and Android offers to delete the originals. Each photo is encrypted with its own random key, thumbnails exist only in memory, and a photo can be restored to *Pictures/Haven Restored* at any time. Unlocked together with the password keeper. |
+| 🖼️ **Photo vault** | Import photos from the gallery. On Android 13 and later Android offers to delete the originals; on Android 12 or with the system picker they stay in the gallery. Each photo is encrypted with its own random key, thumbnails exist only in memory, and a photo can be restored to *Pictures/Haven Restored* at any time. Unlocked together with the password keeper. |
 | 🔑 **Password keeper** | Separately unlocked vault for website logins with a generator (passwords and passphrases), folders, masked reveal and a self-clearing clipboard. |
 | 💾 **Two-factor backups** | Encrypted `.hvbk` files in *Downloads/Haven*, notes and photos included. Restoring needs **both** the passphrase you choose and a 256-bit backup key shown once in the app. Cloud pickers are refused. |
 | ⏳ **Wrong-password protection** | Each wrong password waits longer than the last (5 s up to 30 min). After 10 wrong passwords in a row Haven erases the vault; choose 3, 5, 7, 10 or off. |
@@ -48,7 +48,7 @@ have even unlocked the phone.
 - **Photos encrypted one by one.** Every photo gets its own random key, held in the encrypted password-keeper database. Files are AES-256-GCM streams padded to fixed sizes and bound to their photo id, so they cannot be swapped or reveal exact sizes. Deleting a photo discards its key first. Backups never contain these keys; a restore encrypts the photos again with new ones.
 - **Nothing readable on the lock screen.** Ringing notifications and the Direct Boot alarm store contain only timing and generic text. Screenshots and recents previews are blocked, overlay windows are hidden while Haven is open.
 - **Password change revokes the old one.** Keystore keys are rotated on every change, so an old copy of the key file is useless even to someone who later learns the old password.
-- **Honest limits.** Haven says plainly what it cannot do: it cannot scrub flash remnants after deletion, retract what a clipboard history already read, or ring while the phone is off. Deleting data retires the keys instead of pretending to wipe the chip.
+- **Honest limits.** Haven says plainly what it cannot do: it cannot scrub flash remnants after deletion, remove copies already synced to a cloud service, retract what a clipboard history already read, or ring while the phone is off. Deleting data retires the keys instead of pretending to wipe the chip.
 
 The backup container is specified in [`backup-format/FORMAT.md`](backup-format/FORMAT.md).
 
