@@ -66,6 +66,22 @@ class PhotoFileStore(val dir: File, private val random: SecureRandom = SecureRan
         return removed
     }
 
+    /**
+     * Makes renames into [dir] durable before rows refer to them. Best effort: [android.system.Os]
+     * is not usable in JVM unit tests (and fsync of a directory may be refused), so any failure is
+     * ignored and this becomes a no-op there.
+     */
+    fun syncDirectory() {
+        runCatching {
+            val fd = android.system.Os.open(dir.path, android.system.OsConstants.O_RDONLY, 0)
+            try {
+                android.system.Os.fsync(fd)
+            } finally {
+                android.system.Os.close(fd)
+            }
+        }
+    }
+
     fun deleteAll() {
         dir.deleteRecursively()
     }

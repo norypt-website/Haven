@@ -6,6 +6,7 @@ import com.norypt.haven.alarm.AlarmRuntime
 import com.norypt.haven.backup.PhotoRecord
 import com.norypt.haven.session.UnlockResult
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertThrows
@@ -101,6 +102,49 @@ class PhotoStagingTest {
         vault.reconcile()
         assertThat(vault.commitStaging(staging)).isEqualTo(1)
         assertThat(vault.original(vault.observeAll().first().single())).isEqualTo(byteArrayOf(1, 6))
+        assertThat(stagingDir(store).exists()).isFalse()
+    }
+
+    /** Every row's original and thumbnail exist, and no other photo file does. */
+    private suspend fun assertConsistent(vault: PhotoVault, store: PhotoFileStore) {
+        val rows = vault.observeAll().first()
+        assertThat(store.dir.list().orEmpty().toSet()).isEqualTo(rows.flatMap { listOf(it.fileId, "${it.fileId}.t") }.toSet())
+    }
+
+    @Test fun aFailureInsideTheTransactionKeepsTheOldSetAndRemovesTheMovedFiles() = runTest {
+        val (vault, store) = newVault()
+        val old = (vault.import(byteArrayOf(1, 5), null) as PhotoVault.ImportResult.Ok).photo
+        val staging = vault.beginStaging()
+        staging.add(PhotoRecord("r1", "image/jpeg", 2, 40, 30, null, 7), byteArrayOf(1, 6))
+        assertThrows(IllegalStateException::class.java) {
+            kotlinx.coroutines.runBlocking { vault.commitStaging(staging) { error("passwords could not be written") } }
+        }
+        assertThat(vault.observeAll().first().map { it.id }).containsExactly(old.id)
+        assertThat(vault.original(vault.observeAll().first().single())).isEqualTo(byteArrayOf(1, 5))
+        assertConsistent(vault, store)
+        assertThat(stagingDir(store).exists()).isFalse()
+    }
+
+    @Test fun cancellingDuringTheTransactionStillLeavesAConsistentSet() = runTest {
+        val (vault, store) = newVault()
+        vault.import(byteArrayOf(1, 5), null)
+        val staging = vault.beginStaging()
+        staging.add(PhotoRecord("r1", "image/jpeg", 2, 40, 30, null, 7), byteArrayOf(1, 6))
+        val inside = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        kotlinx.coroutines.runBlocking {
+            val job = launch(kotlinx.coroutines.Dispatchers.IO) {
+                vault.commitStaging(staging) { inside.complete(Unit); gate.await() }
+            }
+            inside.await()
+            job.cancel() // the screen went away while the swap was committing
+            gate.complete(Unit)
+            job.join()
+        }
+        // The swap ran to the end: the new set, with its files.
+        assertThat(vault.observeAll().first().map { it.id }).containsExactly("r1")
+        assertThat(vault.original(vault.observeAll().first().single())).isEqualTo(byteArrayOf(1, 6))
+        assertConsistent(vault, store)
         assertThat(stagingDir(store).exists()).isFalse()
     }
 }

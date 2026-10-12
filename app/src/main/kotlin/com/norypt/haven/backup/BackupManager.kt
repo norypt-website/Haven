@@ -26,7 +26,10 @@ import com.norypt.haven.storage.passwords.PasswordDatabase
 import com.norypt.haven.storage.passwords.PasswordEntryEntity
 import com.norypt.haven.storage.passwords.PhotoEntity
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.coroutineContext
 import androidx.room.withTransaction
 import java.io.ByteArrayOutputStream
 import java.io.IOException
@@ -141,7 +144,7 @@ class BackupManager(
             }
         } finally {
             Wipe.bytes(pw)
-            session.endBackupOperation()
+            withContext(NonCancellable) { session.endBackupOperation() }
         }
     }
 
@@ -256,57 +259,64 @@ class BackupManager(
                 return@withContext RestoreResult.Failure("The file is not a valid Haven backup (${e.javaClass.simpleName}).")
             } catch (e: IllegalArgumentException) {
                 return@withContext RestoreResult.Failure("A photo in the backup could not be read. Nothing was changed.")
+            } catch (e: CancellationException) {
+                throw e // an IllegalStateException too; never mistaken for a locked keeper
             } catch (e: IllegalStateException) {
                 return@withContext RestoreResult.Failure("The password keeper was locked during the restore. Nothing was changed.")
             } catch (e: IOException) {
                 return@withContext RestoreResult.Failure("Could not read the file, or could not store its photos. Nothing was changed.")
             }
-            val content = payload.content
-            val c = session.content()
-            var reminders = 0; var tasks = 0; var notes = 0; var passwords = 0; var photoCount = 0
-            if (content != null) {
-                c.withTransaction {
-                    c.tasks().deleteEverything(); c.taskLists().deleteEverything(); c.reminders().deleteEverything(); c.notes().deleteEverything()
-                    c.reminders().upsertAll(content.reminders.map { ReminderEntity(it.id, it.title, it.notes, it.enabled, it.scheduleJson, 1L, it.createdAtEpochMs, it.updatedAtEpochMs, it.priority, it.starred) })
-                    c.taskLists().upsertAll(content.taskLists.map { TaskListEntity(it.id, it.name, it.position, it.createdAtEpochMs) })
-                    val listIds = content.taskLists.map { it.id }.toSet()
-                    c.tasks().upsertAll(content.tasks.filter { it.listId in listIds }.map { TaskEntity(it.id, it.listId, it.title, it.notes, it.completed, it.completedAtEpochMs, it.dueLocal, it.reminderId, it.position, it.createdAtEpochMs, it.updatedAtEpochMs, it.priority, it.starred, it.followUpMinutes) })
-                    c.notes().upsertAll(content.notes.map { NoteEntity(it.id, it.title, it.body, it.createdAtEpochMs, it.updatedAtEpochMs) })
-                    payload.settings.forEach { (k, v) -> if (isRestorableSetting(k, v)) c.meta().put(VaultMetaEntity(k, v)) }
+            // Past this point the stream is authenticated: the swap runs to the end even if the caller is
+            // cancelled (leaving the screen), so a cancel can never leave a half-applied restore.
+            coroutineContext.ensureActive()
+            withContext(NonCancellable) {
+                val content = payload.content
+                val c = session.content()
+                var reminders = 0; var tasks = 0; var notes = 0; var passwords = 0; var photoCount = 0
+                if (content != null) {
+                    c.withTransaction {
+                        c.tasks().deleteEverything(); c.taskLists().deleteEverything(); c.reminders().deleteEverything(); c.notes().deleteEverything()
+                        c.reminders().upsertAll(content.reminders.map { ReminderEntity(it.id, it.title, it.notes, it.enabled, it.scheduleJson, 1L, it.createdAtEpochMs, it.updatedAtEpochMs, it.priority, it.starred) })
+                        c.taskLists().upsertAll(content.taskLists.map { TaskListEntity(it.id, it.name, it.position, it.createdAtEpochMs) })
+                        val listIds = content.taskLists.map { it.id }.toSet()
+                        c.tasks().upsertAll(content.tasks.filter { it.listId in listIds }.map { TaskEntity(it.id, it.listId, it.title, it.notes, it.completed, it.completedAtEpochMs, it.dueLocal, it.reminderId, it.position, it.createdAtEpochMs, it.updatedAtEpochMs, it.priority, it.starred, it.followUpMinutes) })
+                        c.notes().upsertAll(content.notes.map { NoteEntity(it.id, it.title, it.body, it.createdAtEpochMs, it.updatedAtEpochMs) })
+                        payload.settings.forEach { (k, v) -> if (isRestorableSetting(k, v)) c.meta().put(VaultMetaEntity(k, v)) }
+                    }
+                    reminders = content.reminders.size; tasks = content.tasks.size; notes = content.notes.size
                 }
-                reminders = content.reminders.size; tasks = content.tasks.size; notes = content.notes.size
+                // Rebuild alarms from the restored reminders, also when the vault part fails below.
+                ScheduleSync.syncAll(c, alarms)
+                val pw2 = payload.passwords
+                if (restorePasswords && pw2 != null) {
+                    val stage = staging
+                    val p = session.passwordsOrNull()
+                    if (p == null || (format == 2 && stage == null)) {
+                        return@withContext RestoreResult.Failure("Reminders, tasks and notes were restored, but the password keeper is locked. Unlock it and restore again to bring back passwords and photos.")
+                    }
+                    val replacePasswords: suspend (PasswordDatabase) -> Unit = { db ->
+                        db.entries().deleteEverything(); db.folders().deleteEverything()
+                        db.folders().upsertAll(pw2.folders.map { FolderEntity(it.id, it.name, it.position) })
+                        val folderIds = pw2.folders.map { it.id }.toSet()
+                        db.entries().upsertAll(pw2.entries.map { PasswordEntryEntity(it.id, it.folderId?.takeIf { f -> f in folderIds }, it.title, it.website, it.username, it.password, it.notes, it.createdAtEpochMs, it.updatedAtEpochMs, it.starred, it.color) })
+                    }
+                    try {
+                        // Passwords and photo rows change in one keeper transaction.
+                        if (stage != null) photoCount = photos.commitStaging(stage, replacePasswords)
+                        else p.withTransaction { replacePasswords(p) }
+                    } catch (e: Exception) {
+                        if (e is CancellationException) throw e
+                        return@withContext RestoreResult.Failure("Reminders, tasks and notes were restored, but passwords and photos could not be (${e.javaClass.simpleName}); they were left as they were.")
+                    }
+                    passwords = pw2.entries.size
+                }
+                RestoreResult.Success(reminders, tasks, passwords, notes, photoCount)
             }
-            // Rebuild alarms from the restored reminders, also when the vault part fails below.
-            ScheduleSync.syncAll(c, alarms)
-            val pw2 = payload.passwords
-            if (restorePasswords && pw2 != null) {
-                val stage = staging
-                val p = session.passwordsOrNull()
-                if (p == null || (format == 2 && stage == null)) {
-                    return@withContext RestoreResult.Failure("Reminders, tasks and notes were restored, but the password keeper is locked. Unlock it and restore again to bring back passwords and photos.")
-                }
-                val replacePasswords: suspend (PasswordDatabase) -> Unit = { db ->
-                    db.entries().deleteEverything(); db.folders().deleteEverything()
-                    db.folders().upsertAll(pw2.folders.map { FolderEntity(it.id, it.name, it.position) })
-                    val folderIds = pw2.folders.map { it.id }.toSet()
-                    db.entries().upsertAll(pw2.entries.map { PasswordEntryEntity(it.id, it.folderId?.takeIf { f -> f in folderIds }, it.title, it.website, it.username, it.password, it.notes, it.createdAtEpochMs, it.updatedAtEpochMs, it.starred, it.color) })
-                }
-                try {
-                    // Passwords and photo rows change in one keeper transaction.
-                    if (stage != null) photoCount = photos.commitStaging(stage, replacePasswords)
-                    else p.withTransaction { replacePasswords(p) }
-                } catch (e: Exception) {
-                    if (e is CancellationException) throw e
-                    return@withContext RestoreResult.Failure("Reminders, tasks and notes were restored, but passwords and photos could not be (${e.javaClass.simpleName}); they were left as they were.")
-                }
-                passwords = pw2.entries.size
-            }
-            RestoreResult.Success(reminders, tasks, passwords, notes, photoCount)
         } finally {
             // Idempotent; after a commit there is nothing left to drop.
             staging?.discard()
             Wipe.bytes(pw)
-            session.endBackupOperation()
+            withContext(NonCancellable) { session.endBackupOperation() }
         }
     }
 

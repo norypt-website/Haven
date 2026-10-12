@@ -14,6 +14,7 @@ import com.norypt.haven.session.fullyUnlockedTestSession
 import com.norypt.haven.storage.content.NoteEntity
 import com.norypt.haven.storage.passwords.PhotoEntity
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -51,13 +52,14 @@ class BackupPhotosTest {
     private lateinit var vault: PhotoVault
     private lateinit var store: PhotoFileStore
     private lateinit var manager: BackupManager
+    private val imaging = FakeImaging()
     private val passphrase = "backup passphrase"
     private val params = Argon2Params.RFC9106_MEMORY_CONSTRAINED
 
     private fun setUp() {
         session = fullyUnlockedTestSession(app, tmp.newFolder("keys"))
         store = PhotoFileStore(File(tmp.root, "vaults/photos"))
-        vault = PhotoVault(session, { store }, FakeImaging())
+        vault = PhotoVault(session, { store }, imaging)
         manager = BackupManager(app, session, AlarmRuntime.get(app), vault, TestBackupKdf())
     }
 
@@ -247,5 +249,36 @@ class BackupPhotosTest {
         }
         assertThrows(IllegalStateException::class.java) { runBlocking { manager.writeBackup(out, passphrase.toByteArray(), true, params) } }
         assertThat(locked).isTrue()
+    }
+
+    @Test fun cancellingARestoreWhileItReadsChangesNothing() = runTest {
+        setUp()
+        val c = session.content()
+        c.notes().upsert(NoteEntity("n1", "Title", "from backup", 1, 2))
+        val p1 = import(image(1_000, 3)); val p2 = import(image(1_000, 4))
+        val file = export()
+        c.notes().deleteEverything(); c.notes().upsert(NoteEntity("n2", "Other", "current", 3, 4))
+        vault.delete(listOf(p1.id, p2.id))
+        val q = import(image(30, 9))
+        val filesBefore = liveFiles()
+        val uri = Uri.parse("content://com.android.externalstorage.documents/document/primary%3Acancel.hvbk")
+        shadowOf(app.contentResolver).registerInputStream(uri, ByteArrayInputStream(file))
+        val key = manager.backupKey()
+        runBlocking {
+            lateinit var job: kotlinx.coroutines.Job
+            // The screen goes away while the first restored photo is being staged.
+            imaging.duringThumbnail = { job.cancel() }
+            job = launch(kotlinx.coroutines.Dispatchers.IO, start = kotlinx.coroutines.CoroutineStart.LAZY) {
+                manager.restore(uri, passphrase.toCharArray(), key, true)
+            }
+            job.start()
+            job.join()
+            assertThat(job.isCancelled).isTrue()
+        }
+        imaging.duringThumbnail = {}
+        assertThat(notes()).containsExactly("n2" to "current")
+        assertThat(vault.observeAll().first().map { it.id }).containsExactly(q.id)
+        assertThat(liveFiles()).isEqualTo(filesBefore)
+        assertThat(stagingDir().exists()).isFalse()
     }
 }

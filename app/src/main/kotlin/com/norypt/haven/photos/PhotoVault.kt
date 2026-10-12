@@ -10,6 +10,7 @@ import com.norypt.haven.session.VaultSession
 import com.norypt.haven.storage.passwords.PasswordDatabase
 import com.norypt.haven.storage.passwords.PhotoEntity
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -199,26 +200,50 @@ class PhotoVault(
                 names.forEach { if (!File(staging.store.dir, it).isFile) throw IOException("a staged photo file is missing") }
                 val live = store()
                 live.dir.mkdirs()
-                val old = db.photos().all()
-                try {
-                    names.forEach { if (!File(staging.store.dir, it).renameTo(File(live.dir, it))) throw IOException("move failed") }
-                    db.withTransaction {
-                        db.photos().deleteEverything()
-                        db.photos().insertAll(entities)
-                        alsoInTransaction(db)
+                // From the first move to the last cleanup nothing may stop half-way: a cancel arriving
+                // while the transaction commits would otherwise surface as a failure and the cleanup
+                // below would delete files the committed rows refer to.
+                withContext(NonCancellable) {
+                    val old = db.photos().all()
+                    var transactionStarted = false
+                    try {
+                        names.forEach { if (!File(staging.store.dir, it).renameTo(File(live.dir, it))) throw IOException("move failed") }
+                        live.syncDirectory()
+                        transactionStarted = true
+                        db.withTransaction {
+                            db.photos().deleteEverything()
+                            db.photos().insertAll(entities)
+                            alsoInTransaction(db)
+                        }
+                    } catch (t: Throwable) {
+                        if (!transactionStarted) {
+                            // Known not committed: the moved files belong to nobody.
+                            entities.forEach { live.delete(it.fileId) }
+                        } else {
+                            // The transaction may or may not have committed: keep every file a row refers to.
+                            removeUnreferenced(db, live, entities.map { it.fileId } + old.map { it.fileId })
+                        }
+                        old.forEach { it.dek.fill(0) }
+                        throw t
                     }
-                } catch (t: Throwable) {
-                    entities.forEach { live.delete(it.fileId) }
-                    throw t
+                    // The old keys are gone with their rows: these files are unreadable already.
+                    old.forEach { live.delete(it.fileId); it.dek.fill(0) }
+                    clearCaches()
+                    entities.size
                 }
-                // The old keys are gone with their rows: these files are unreadable already.
-                old.forEach { live.delete(it.fileId); it.dek.fill(0) }
-                clearCaches()
-                entities.size
             }
         } finally {
             staging.discard()
         }
+    }
+
+    /**
+     * After a commit whose outcome is unknown: deletes those of [candidates] that no row refers to.
+     * When the rows cannot be read nothing is deleted; [reconcile] removes unreferenced files later.
+     */
+    private suspend fun removeUnreferenced(db: PasswordDatabase, live: PhotoFileStore, candidates: List<String>) {
+        val referenced = runCatching { db.photos().all().map { it.dek.fill(0); it.fileId }.toSet() }.getOrNull() ?: return
+        candidates.filter { it !in referenced }.forEach { live.delete(it) }
     }
 
     suspend fun delete(ids: Collection<String>): Unit = withContext(Dispatchers.IO) {
