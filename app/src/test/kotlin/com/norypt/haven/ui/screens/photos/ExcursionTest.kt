@@ -65,4 +65,27 @@ class ExcursionTest {
         assertThat(e.open).isFalse()
         assertThat(backgroundLocks(c)).isTrue()
     }
+
+    @Test fun aResultAfterRecreationIsStillAppliedWhileTheKeeperIsOpen() = runTest {
+        val c = controller()
+        c.onUnlocked()
+        val before = Excursion(c).also { it.launch { } }
+        before.end()                 // the old screen was disposed (rotation)
+        val after = Excursion(c)     // the recreated screen never opened anything
+        var applied = false
+        after.onResult(keeperOpen = true) { applied = true }
+        assertThat(applied).isTrue()
+        assertThat(backgroundLocks(c)).isTrue() // still balanced: no extra end, no leak
+    }
+
+    @Test fun aResultIsIgnoredOnceTheKeeperClosed() = runTest {
+        val c = controller()
+        c.onUnlocked()
+        val e = Excursion(c).also { it.launch { } }
+        var applied = false
+        e.onResult(keeperOpen = false) { applied = true }
+        assertThat(applied).isFalse()
+        assertThat(e.open).isFalse()            // the excursion still ends
+        assertThat(backgroundLocks(c)).isTrue()
+    }
 }

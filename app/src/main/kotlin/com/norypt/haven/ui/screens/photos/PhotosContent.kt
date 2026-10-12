@@ -316,19 +316,18 @@ private fun PhotosEmptyState(onAdd: () -> Unit) {
  * import; refused (or Android 12) falls back to the system photo picker, which needs no permission
  * but cannot delete. Each system screen is an [Excursion], so the auto-lock does not fire behind
  * it and a second tap while one is open does nothing. Results that arrive after the keeper closed
- * are dropped. [onReady] receives the picker's photos, or null when Haven may read the gallery itself.
+ * are dropped; results that arrive after the activity was recreated still count. [onReady] receives the picker's photos, or null when Haven may read the gallery itself.
  */
 @Composable
 private fun rememberAddPhotos(lock: LockController, keeperOpen: () -> Boolean, onReady: (List<Uri>?) -> Unit): () -> Unit {
     val pickerTrip = rememberExcursion(lock)
     val permissionTrip = rememberExcursion(lock)
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(MAX_PICK)) { uris ->
-        if (pickerTrip.end() && keeperOpen() && uris.isNotEmpty()) onReady(uris)
+        pickerTrip.onResult(keeperOpen()) { if (uris.isNotEmpty()) onReady(uris) }
     }
     val launchPicker: () -> Unit = { pickerTrip.launch { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) } }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
-        if (!permissionTrip.end() || !keeperOpen()) return@rememberLauncherForActivityResult
-        if (grants.values.any { it }) onReady(null) else launchPicker()
+        permissionTrip.onResult(keeperOpen()) { if (grants.values.any { it }) onReady(null) else launchPicker() }
     }
     return {
         if (!pickerTrip.open && !permissionTrip.open) {
@@ -351,7 +350,7 @@ internal fun rememberSystemPicker(lock: LockController, keeperOpen: () -> Boolea
     val trip = rememberExcursion(lock)
     val picker: ManagedActivityResultLauncher<PickVisualMediaRequest, List<Uri>> =
         rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(MAX_PICK)) { uris ->
-            if (trip.end() && keeperOpen() && uris.isNotEmpty()) onPicked(uris)
+            trip.onResult(keeperOpen()) { if (uris.isNotEmpty()) onPicked(uris) }
         }
     return { trip.launch { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }; Unit }
 }

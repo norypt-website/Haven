@@ -31,12 +31,23 @@ internal class Excursion(private val lock: LockController) {
         return ok
     }
 
-    /** Ends the excursion. Returns false when none was open (a stale or foreign result). */
+    /** Ends the excursion if it is still open. Returns whether it was. */
     fun end(): Boolean {
         if (!open) return false
         open = false
         lock.endSystemInteraction()
         return true
+    }
+
+    /**
+     * A result came back: ends the excursion (if this instance still holds it) and applies the
+     * result while the keeper is open. The result is applied even when this instance never opened
+     * the screen: after the activity is recreated (rotation) the old screen's excursion was ended
+     * on dispose and the result arrives at a fresh instance, but the user's answer still counts.
+     */
+    fun onResult(keeperOpen: Boolean, apply: () -> Unit) {
+        end()
+        if (keeperOpen) apply()
     }
 }
 

@@ -127,7 +127,8 @@ private fun ImportContent(nav: NavHostController) {
     val keeperOpen = { container.session.passwordsOrNull() != null }
     val deleteTrip = rememberExcursion(container.lockController)
     val deleteLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { r ->
-        if (deleteTrip.end() && keeperOpen()) vm.deleteResult.value = r.resultCode == Activity.RESULT_OK
+        // The request state lives in the view model, so an answer delivered after a rotation completes it.
+        deleteTrip.onResult(keeperOpen()) { if (vm.deleteRequested) vm.deleteResult.value = r.resultCode == Activity.RESULT_OK }
     }
     LaunchedEffect(progress?.finished) {
         val p = progress ?: return@LaunchedEffect
