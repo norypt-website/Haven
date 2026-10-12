@@ -80,7 +80,7 @@ The header is a JSON object. Decoders ignore unknown keys; encoders always emit 
 | `salt`             | string          | base64 of 16 random bytes, used by Argon2id and HKDF             |
 | `backupKeyId`      | string          | base64 of the first 8 bytes of SHA-256(backupKey)                |
 | `contents`         | array of string | payload sections present, e.g. `["content","passwords"]`         |
-| `payloadFormat`    | int, must be 1  | schema version of the payload JSON                               |
+| `payloadFormat`    | int, 1 or 2     | layout and schema version of the payload                         |
 
 `backupKeyId` lets the app tell the user which recorded backup key a file needs without
 revealing the key. It is a hint only: it is not used for any security decision.
@@ -93,7 +93,7 @@ revealing the key. It is a hint only: it is not used for any security decision.
 | header length    | 1 .. 16384 bytes                                 | `Malformed`            |
 | header JSON      | well-formed object with the fields above          | `Malformed`            |
 | `version`        | 1                                                | `UnsupportedVersion`   |
-| `payloadFormat`  | 1                                                | `UnsupportedVersion`   |
+| `payloadFormat`  | 1 .. 2                                           | `UnsupportedVersion`   |
 | `kdf.memoryKib`  | 8192 .. 1048576 (8 MiB .. 1 GiB)                 | `ParametersOutOfBounds`|
 | `kdf.iterations` | 1 .. 16                                          | `ParametersOutOfBounds`|
 | `kdf.parallelism`| 1 .. 8                                           | `ParametersOutOfBounds`|
@@ -138,7 +138,7 @@ zero pad). The 53 characters are shown in groups of four separated by `-`, for e
 | situation                                             | exception                                     |
 |-------------------------------------------------------|-----------------------------------------------|
 | not an HVBK file, bad framing, unparsable header      | `BackupFormatException.Malformed`             |
-| container or payload version other than 1             | `BackupFormatException.UnsupportedVersion`    |
+| container version other than 1, payload format other than 1 or 2 | `BackupFormatException.UnsupportedVersion`    |
 | KDF parameter or salt outside the bounds above        | `BackupFormatException.ParametersOutOfBounds` |
 | wrong passphrase, wrong backup key, modified header   | `AuthenticationFailed` (at `open`)            |
 | modified key check, body segment or end marker        | `AuthenticationFailed` (at `open` or on read) |
@@ -158,28 +158,52 @@ failure. After a failure every further read throws the same exception.
 
 ## Payload
 
-The body plaintext is a UTF-8 JSON document (`BackupPayload`, `payloadFormat` 1):
+Payload format 1 (written by older versions, still read) is a UTF-8 JSON document.
+Payload format 2 frames the JSON and the photo bytes:
 
 ```
-BackupPayload      { format: 1, content: ContentSnapshot?, passwords: PasswordSnapshot?, settings: {string: string} }
-ContentSnapshot    { reminders: [ReminderRecord], taskLists: [TaskListRecord], tasks: [TaskRecord] }
+u32 jsonLength (big-endian) || JSON || for each photo in JSON order: u64 length (big-endian) || bytes
+```
+
+The JSON document is `BackupPayload` (`format` 1 or 2):
+
+```
+BackupPayload      { format: 2, content: ContentSnapshot?, passwords: PasswordSnapshot?, settings: {string: string} }
+ContentSnapshot    { reminders: [ReminderRecord], taskLists: [TaskListRecord], tasks: [TaskRecord], notes = [] }
 ReminderRecord     { id, title, notes, enabled, scheduleJson, createdAtEpochMs, updatedAtEpochMs, priority = 0, starred = false }
 TaskListRecord     { id, name, position, createdAtEpochMs }
 TaskRecord         { id, listId, title, notes, completed, completedAtEpochMs?, dueLocal?, reminderId?, position, createdAtEpochMs, updatedAtEpochMs, priority = 0, starred = false, followUpMinutes? }
-PasswordSnapshot   { folders: [FolderRecord], entries: [PasswordEntryRecord] }
+NoteRecord         { id, title, body, createdAtEpochMs, updatedAtEpochMs }
+PasswordSnapshot   { folders: [FolderRecord], entries: [PasswordEntryRecord], photos = [] }
 FolderRecord       { id, name, position }
 PasswordEntryRecord{ id, folderId?, title, website, username, password, notes, createdAtEpochMs, updatedAtEpochMs, starred = false, color = 0 }
+PhotoRecord        { id, mimeType, byteSize, width, height, takenAtEpochMs?, addedAtEpochMs }
 ```
 
 Fields written `name = value` were added after the first release: when a backup from an older
-version lacks them they take that value. `priority` is 0 none, 1 low, 2 medium, 3 high. `color`
-is 0 for a colour worked out from the entry title, otherwise a palette id; an id the reader does
-not know is shown as the automatic colour and kept as it is.
+version lacks them they take that value (`notes` and `photos` are empty in a format 1 backup).
+`priority` is 0 none, 1 low, 2 medium, 3 high. `color` is 0 for a colour worked out from the
+entry title, otherwise a palette id; an id the reader does not know is shown as the automatic
+colour and kept as it is.
 
 `dueLocal` is an ISO-8601 local date-time without offset. Decoding ignores unknown keys so a
-newer app can add fields without breaking older readers; a `format` other than 1 is rejected
-with `UnsupportedVersion`. `BackupPayloadJson.decode(InputStream)` refuses documents larger
-than 64 MiB with `Malformed` before parsing them.
+newer app can add fields without breaking older readers; a `format` other than 1 or 2 is
+rejected with `UnsupportedVersion`. `BackupPayloadJson.decode(InputStream)` refuses documents
+larger than 64 MiB with `Malformed` before parsing them.
+
+### Photos (format 2)
+
+Each `PhotoRecord` in `passwords.photos` is an index entry; its bytes follow the JSON, in the
+same order, as `u64 length || bytes`. The reader enforces, before allocating:
+
+- `jsonLength` is at least 2 and at most 64 MiB;
+- at most 100 000 photos, with unique ids;
+- `byteSize` between 0 and 64 MiB, and the framed length must equal `byteSize`;
+- no bytes after the last photo.
+
+Any violation, or a payload that ends early, is `Malformed`. Photo bytes are handed to the
+caller one at a time and wiped afterwards, so memory holds at most one photo. Backups never
+contain the per-photo keys; thumbnails are regenerated on restore.
 
 ## Security properties
 

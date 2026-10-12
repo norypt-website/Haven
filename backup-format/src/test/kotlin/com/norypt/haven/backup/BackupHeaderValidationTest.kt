@@ -77,7 +77,13 @@ class BackupHeaderValidationTest {
         assertRejected<BackupFormatException.UnsupportedVersion>(frame(headerJson(version = 2)))
         assertRejected<BackupFormatException.UnsupportedVersion>(frame("""{"version":2,"anything":"goes"}"""))
         assertRejected<BackupFormatException.UnsupportedVersion>(frame(headerJson(version = 0)))
-        assertRejected<BackupFormatException.UnsupportedVersion>(frame(headerJson(payloadFormat = 2)))
+        assertRejected<BackupFormatException.UnsupportedVersion>(frame(headerJson(payloadFormat = 3)))
+    }
+
+    @Test
+    fun payloadFormatOneAndTwoAccepted() {
+        assertThat(HeaderCodec.readFraming(ByteArrayInputStream(frame(headerJson(payloadFormat = 1)))).header.payloadFormat).isEqualTo(1)
+        assertThat(HeaderCodec.readFraming(ByteArrayInputStream(frame(headerJson(payloadFormat = 2)))).header.payloadFormat).isEqualTo(2)
     }
 
     @Test

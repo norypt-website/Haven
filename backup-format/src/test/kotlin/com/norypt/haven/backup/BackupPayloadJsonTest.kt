@@ -31,7 +31,7 @@ class BackupPayloadJsonTest {
     @Test
     fun roundTripsThroughString() {
         val text = BackupPayloadJson.encode(payload)
-        assertThat(text).contains("\"format\":1")
+        assertThat(text).contains("\"format\":2")
         assertThat(BackupPayloadJson.decode(text)).isEqualTo(payload)
     }
 
@@ -44,7 +44,7 @@ class BackupPayloadJsonTest {
 
     @Test
     fun ignoresUnknownKeys() {
-        val text = """{"format":1,"future":{"deep":[1,2,{"x":null}]},"content":null,"passwords":null,"settings":{},"extra":true}"""
+        val text = """{"format":2,"future":{"deep":[1,2,{"x":null}]},"content":null,"passwords":null,"settings":{},"extra":true}"""
         assertThat(BackupPayloadJson.decode(text)).isEqualTo(BackupPayload())
         val record = """{"format":1,"passwords":{"folders":[{"id":"f","name":"n","position":0,"colour":"red"}],"entries":[]}}"""
         assertThat(BackupPayloadJson.decode(record).passwords?.folders).containsExactly(FolderRecord("f", "n", 0))
@@ -68,10 +68,10 @@ class BackupPayloadJsonTest {
     @Test
     fun rejectsUnknownFormat() {
         assertThrows(BackupFormatException.UnsupportedVersion::class.java) {
-            BackupPayloadJson.decode("""{"format":2}""")
+            BackupPayloadJson.decode("""{"format":3}""")
         }
         assertThrows(BackupFormatException.UnsupportedVersion::class.java) {
-            BackupPayloadJson.decode("""{"format":2,"content":{"totally":"different"}}""")
+            BackupPayloadJson.decode("""{"format":3,"content":{"totally":"different"}}""")
         }
     }
 

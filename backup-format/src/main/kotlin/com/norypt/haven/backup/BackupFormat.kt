@@ -4,7 +4,10 @@ package com.norypt.haven.backup
 public object BackupFormat {
     public const val MAGIC: String = "HAVENBK1"
     public const val VERSION: Int = 1
-    public const val PAYLOAD_FORMAT: Int = 1
+    public const val PAYLOAD_FORMAT: Int = 2
+
+    /** Payload formats this build can read; format 1 is the JSON-only snapshot. */
+    public val SUPPORTED_PAYLOAD_FORMATS: IntRange = 1..2
     public const val FILE_EXTENSION: String = "hvbk"
 
     /** Upper bound of the header JSON in bytes; enforced before the header is parsed. */

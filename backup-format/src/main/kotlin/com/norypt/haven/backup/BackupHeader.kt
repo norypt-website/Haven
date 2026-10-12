@@ -107,9 +107,9 @@ internal object HeaderCodec {
     }
 
     private fun validate(header: BackupHeader) {
-        if (header.payloadFormat != BackupFormat.PAYLOAD_FORMAT) {
+        if (header.payloadFormat !in BackupFormat.SUPPORTED_PAYLOAD_FORMATS) {
             throw BackupFormatException.UnsupportedVersion(
-                "Payload format ${header.payloadFormat} is not supported; this build reads format ${BackupFormat.PAYLOAD_FORMAT}",
+                "Payload format ${header.payloadFormat} is not supported; this build reads formats 1 and 2",
             )
         }
         val kdf = header.kdf

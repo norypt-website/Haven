@@ -7,7 +7,7 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-/** The plaintext snapshot carried inside a backup, payload format 1. */
+/** The plaintext snapshot carried inside a backup, payload formats 1 and 2. */
 @Serializable
 public data class BackupPayload(
     val format: Int = BackupFormat.PAYLOAD_FORMAT,
@@ -21,6 +21,7 @@ public data class ContentSnapshot(
     val reminders: List<ReminderRecord>,
     val taskLists: List<TaskListRecord>,
     val tasks: List<TaskRecord>,
+    val notes: List<NoteRecord> = emptyList(),
 )
 
 @Serializable
@@ -67,6 +68,28 @@ public data class TaskRecord(
 public data class PasswordSnapshot(
     val folders: List<FolderRecord>,
     val entries: List<PasswordEntryRecord>,
+    val photos: List<PhotoRecord> = emptyList(),
+)
+
+@Serializable
+public data class NoteRecord(
+    val id: String,
+    val title: String,
+    val body: String,
+    val createdAtEpochMs: Long,
+    val updatedAtEpochMs: Long,
+)
+
+/** Index of a photo whose bytes follow the JSON (payload format 2). Never carries a key. */
+@Serializable
+public data class PhotoRecord(
+    val id: String,
+    val mimeType: String,
+    val byteSize: Long,
+    val width: Int,
+    val height: Int,
+    val takenAtEpochMs: Long? = null,
+    val addedAtEpochMs: Long,
 )
 
 @Serializable
@@ -118,7 +141,7 @@ public object BackupPayloadJson {
         } catch (e: IllegalArgumentException) {
             throw describeFailure(text, e)
         }
-        if (payload.format != BackupFormat.PAYLOAD_FORMAT) throw unsupportedFormat(payload.format)
+        if (payload.format !in BackupFormat.SUPPORTED_PAYLOAD_FORMATS) throw unsupportedFormat(payload.format)
         return payload
     }
 
@@ -152,12 +175,12 @@ public object BackupPayloadJson {
         } catch (_: IllegalArgumentException) {
             null
         }
-        if (format != null && format != BackupFormat.PAYLOAD_FORMAT) return unsupportedFormat(format)
+        if (format != null && format !in BackupFormat.SUPPORTED_PAYLOAD_FORMATS) return unsupportedFormat(format)
         return BackupFormatException.Malformed("Payload is not a valid snapshot document", cause)
     }
 
     private fun unsupportedFormat(format: Int): BackupFormatException.UnsupportedVersion =
         BackupFormatException.UnsupportedVersion(
-            "Payload format $format is not supported; this build reads format ${BackupFormat.PAYLOAD_FORMAT}",
+            "Payload format $format is not supported; this build reads formats 1 and 2",
         )
 }
