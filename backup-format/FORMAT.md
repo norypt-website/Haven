@@ -159,7 +159,8 @@ failure. After a failure every further read throws the same exception.
 ## Payload
 
 Payload format 1 (written by older versions, still read) is a UTF-8 JSON document.
-Payload format 2 frames the JSON and the photo bytes:
+Payload format 2 frames the JSON and the photo bytes. The reader picks the layout from the
+header's `payloadFormat`, and the JSON `format` must equal it; a mismatch is `Malformed`.
 
 ```
 u32 jsonLength (big-endian) || JSON || for each photo in JSON order: u64 length (big-endian) || bytes
@@ -197,12 +198,17 @@ Each `PhotoRecord` in `passwords.photos` is an index entry; its bytes follow the
 same order, as `u64 length || bytes`. The reader enforces, before allocating:
 
 - `jsonLength` is at least 2 and at most 64 MiB;
-- at most 100 000 photos, with unique ids;
+- the JSON `format` is 2;
+- at most 100 000 photos, with unique ids, checked before any photo bytes are allocated;
 - `byteSize` between 0 and 64 MiB, and the framed length must equal `byteSize`;
 - no bytes after the last photo.
 
-Any violation, or a payload that ends early, is `Malformed`. Photo bytes are handed to the
-caller one at a time and wiped afterwards, so memory holds at most one photo. Backups never
+Any violation, or a payload that ends early, is `Malformed`. The writer refuses a payload that
+breaks any of these bounds before writing anything, so an export fails rather than producing a
+file that cannot be restored. Photo bytes are handed to the
+caller one at a time and wiped as soon as the caller returns, so memory holds at most one photo;
+the caller must copy or consume them at once. They count only once the whole payload has been
+read: anything handed over before a failure must be discarded. Backups never
 contain the per-photo keys; thumbnails are regenerated on restore.
 
 ## Security properties

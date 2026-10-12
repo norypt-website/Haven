@@ -22,6 +22,8 @@ public class BackupWriter(
      *
      * @param passphrase UTF-8 bytes of the user's backup passphrase. The caller owns and wipes it.
      * @param params Argon2id parameters; must satisfy [KdfParams.isWithinBounds].
+     * @param payloadFormat layout the payload is written in; the default is the current format.
+     *   An older supported value exists so tests and tools can produce files older apps wrote.
      */
     public fun write(
         output: OutputStream,
@@ -31,9 +33,11 @@ public class BackupWriter(
         appVersionCode: Int,
         contents: List<String>,
         createdAtEpochMs: Long,
+        payloadFormat: Int = BackupFormat.PAYLOAD_FORMAT,
         writePayload: (OutputStream) -> Unit,
     ) {
         require(params.isWithinBounds()) { "KDF parameters $params are outside the bounds readers accept" }
+        require(payloadFormat in BackupFormat.SUPPORTED_PAYLOAD_FORMATS) { "payload format $payloadFormat is not supported" }
         output.use { out ->
             val salt = ByteArray(BackupFormat.SALT_LENGTH).also(random::nextBytes)
             val header = BackupHeader(
@@ -44,7 +48,7 @@ public class BackupWriter(
                 salt = Base64.getEncoder().encodeToString(salt),
                 backupKeyId = backupKey.keyId(),
                 contents = contents,
-                payloadFormat = BackupFormat.PAYLOAD_FORMAT,
+                payloadFormat = payloadFormat,
             )
             val framing = HeaderCodec.encodeFraming(header)
             val aead = FileCipher.open(kdf, passphrase, salt, params, backupKey)

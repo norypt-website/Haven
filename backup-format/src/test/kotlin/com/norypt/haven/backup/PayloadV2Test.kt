@@ -52,10 +52,56 @@ class PayloadV2Test {
         assertThrows(BackupFormatException.Malformed::class.java) { PayloadV2.read(ByteArrayInputStream(bad)) { _, _ -> } }
     }
 
+    private fun manyPhotos() = PasswordSnapshot(emptyList(), emptyList(), photos = List(PayloadV2.MAX_PHOTOS + 1) { PhotoRecord("$it", "image/jpeg", 0, 1, 1, null, 0) })
+
+    /** The JSON section alone, framed by hand, so the reader's bounds can be tested past the writer's. */
+    private fun framedJson(p: BackupPayload): ByteArray {
+        val json = BackupPayloadJson.encode(p).toByteArray()
+        return ByteBuffer.allocate(4).putInt(json.size).array() + json
+    }
+
     @Test fun tooManyPhotosRejected() {
-        val many = PasswordSnapshot(emptyList(), emptyList(), photos = List(PayloadV2.MAX_PHOTOS + 1) { PhotoRecord("$it", "image/jpeg", 0, 1, 1, null, 0) })
-        val e = encode(BackupPayload(passwords = many)) { ByteArray(0) }
+        // Built by hand: the writer refuses this payload. Every photo is 0 bytes, so a reader that did not
+        // check the count before reading photos would need only the 8-byte length fields.
+        val e = framedJson(BackupPayload(passwords = manyPhotos())) + ByteArray(8 * (PayloadV2.MAX_PHOTOS + 1))
+        var delivered = 0
+        assertThrows(BackupFormatException.Malformed::class.java) { PayloadV2.read(ByteArrayInputStream(e)) { _, _ -> delivered++ } }
+        assertThat(delivered).isEqualTo(0)
+    }
+
+    @Test fun writerRefusesTooManyPhotos() {
+        assertThrows(IllegalArgumentException::class.java) { encode(BackupPayload(passwords = manyPhotos())) { ByteArray(0) } }
+    }
+
+    @Test fun writerRefusesAnOversizePhotoRecord() {
+        val big = BackupPayload(passwords = PasswordSnapshot(emptyList(), emptyList(), photos = listOf(PhotoRecord("x", "image/jpeg", PayloadV2.MAX_PHOTO_BYTES + 1, 1, 1, null, 0))))
+        var asked = 0
+        assertThrows(IllegalArgumentException::class.java) { encode(big) { asked++; ByteArray(0) } }
+        assertThat(asked).isEqualTo(0)
+    }
+
+    @Test fun writerRefusesDuplicatePhotoIds() {
+        val dup = BackupPayload(passwords = PasswordSnapshot(emptyList(), emptyList(), photos = listOf(photoB, photoB)))
+        assertThrows(IllegalArgumentException::class.java) { encode(dup) { ByteArray(0) } }
+    }
+
+    @Test fun writerRefusesOversizeJson() {
+        val huge = "x".repeat((BackupPayloadJson.MAX_PAYLOAD_BYTES + 1).toInt())
+        val p = BackupPayload(content = ContentSnapshot(emptyList(), emptyList(), emptyList(), notes = listOf(NoteRecord("n", "T", huge, 1, 2))))
+        val out = ByteArrayOutputStream()
+        assertThrows(IllegalArgumentException::class.java) { PayloadV2.write(out, p) { ByteArray(0) } }
+        assertThat(out.size()).isEqualTo(0)
+    }
+
+    @Test fun formatOneJsonInsideTheFormatTwoLayoutIsRejected() {
+        val e = framedJson(BackupPayload(format = 1, content = ContentSnapshot(emptyList(), emptyList(), emptyList())))
         assertThrows(BackupFormatException.Malformed::class.java) { PayloadV2.read(ByteArrayInputStream(e)) { _, _ -> } }
+    }
+
+    @Test fun writerAlwaysLabelsTheJsonFormatTwo() {
+        val e = encode(payload.copy(format = 1))
+        val back = PayloadV2.read(ByteArrayInputStream(e)) { _, _ -> }
+        assertThat(back.format).isEqualTo(2)
     }
 
     @Test fun oversizePhotoRecordRejected() {
