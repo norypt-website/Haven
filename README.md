@@ -33,8 +33,10 @@ have even unlocked the phone.
 |---|---|
 | ⏰ **Reminders that ring** | One-time and recurring (daily, weekly, monthly, yearly, every *N*, end rules), exact alarms with full-screen ringing, snooze presets, early "coming up" alerts, quick rescheduling, explicit time-zone and DST policies. |
 | ✅ **Tasks** | Lists, search, due dates, starring, priority levels, and a follow-up alarm if a task is still open after its due time. |
+| 📝 **Notes** | Quick private notes with search, saved as you leave the note. Stored in the encrypted content database, so they travel with backups. |
+| 🖼️ **Photo vault** | Import photos from the gallery and Android offers to delete the originals. Each photo is encrypted with its own random key, thumbnails exist only in memory, and a photo can be restored to *Pictures/Haven Restored* at any time. Unlocked together with the password keeper. |
 | 🔑 **Password keeper** | Separately unlocked vault for website logins with a generator (passwords and passphrases), folders, masked reveal and a self-clearing clipboard. |
-| 💾 **Two-factor backups** | Encrypted `.hvbk` files in *Downloads/Haven*. Restoring needs **both** the passphrase you choose and a 256-bit backup key shown once in the app. Cloud pickers are refused. |
+| 💾 **Two-factor backups** | Encrypted `.hvbk` files in *Downloads/Haven*, notes and photos included. Restoring needs **both** the passphrase you choose and a 256-bit backup key shown once in the app. Cloud pickers are refused. |
 | ⏳ **Wrong-password protection** | Each wrong password waits longer than the last (5 s up to 30 min). After 10 wrong passwords in a row Haven erases the vault; choose 3, 5, 7, 10 or off. |
 | 🛡️ **Duress password** | Opt-in second password. Typed under pressure it silently wipes the vault and shows only "Wrong password", taking exactly as long as a wrong password; afterwards no password opens it. |
 | 🌓 **Norypt design** | Light, dark and system themes; reflows at 200 % font scale; every touch target at least 48 dp. |
@@ -43,11 +45,22 @@ have even unlocked the phone.
 
 - **Two-layer key envelope.** Each vault's random database key is wrapped by an Android Keystore key (StrongBox when the device has one, TEE otherwise, never software in release builds) and then by a key derived from your password with **Argon2id** (64–256 MiB, tuned per device at setup). Both layers are AES-256-GCM with authenticated headers, so envelopes cannot be swapped, downgraded or edited.
 - **Encrypted storage.** Content and passwords live in two independent **SQLCipher** databases in app-private storage that Android never backs up or transfers.
+- **Photos encrypted one by one.** Every photo gets its own random key, held in the encrypted password-keeper database. Files are AES-256-GCM streams padded to fixed sizes and bound to their photo id, so they cannot be swapped or reveal exact sizes. Deleting a photo discards its key first. Backups never contain these keys; a restore encrypts the photos again with new ones.
 - **Nothing readable on the lock screen.** Ringing notifications and the Direct Boot alarm store contain only timing and generic text. Screenshots and recents previews are blocked, overlay windows are hidden while Haven is open.
 - **Password change revokes the old one.** Keystore keys are rotated on every change, so an old copy of the key file is useless even to someone who later learns the old password.
 - **Honest limits.** Haven says plainly what it cannot do: it cannot scrub flash remnants after deletion, retract what a clipboard history already read, or ring while the phone is off. Deleting data retires the keys instead of pretending to wipe the chip.
 
 The backup container is specified in [`backup-format/FORMAT.md`](backup-format/FORMAT.md).
+
+## Permissions
+
+Haven asks for as little as it can. The only one tied to your data is the photo permission.
+
+| Permission | Why |
+|---|---|
+| `READ_MEDIA_IMAGES` / `READ_MEDIA_VISUAL_USER_SELECTED` | Only when you tap *Add photos*, to encrypt the photos you choose and let Android delete the originals. Android 12 uses the system picker instead. |
+
+Alarm, notification and boot permissions exist so reminders ring reliably; there is no network, location, contacts, camera or microphone access.
 
 ## Install
 
