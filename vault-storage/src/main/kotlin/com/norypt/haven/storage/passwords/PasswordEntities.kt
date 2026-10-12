@@ -77,16 +77,49 @@ public interface PasswordEntryDao {
     @Query("SELECT COUNT(*) FROM entries WHERE starred = 1") public fun observeStarredCount(): Flow<Int>
 }
 
+/**
+ * One hidden photo. [dek] is the photo's own random key: the files under the photo directory are
+ * unreadable without it, so deleting this row (secure_delete is on) erases the photo.
+ */
+@Entity(tableName = "photos")
+public class PhotoEntity(
+    @PrimaryKey public val id: String,
+    @ColumnInfo(name = "file_id") public val fileId: String,
+    public val dek: ByteArray,
+    @ColumnInfo(name = "mime_type") public val mimeType: String,
+    @ColumnInfo(name = "byte_size") public val byteSize: Long,
+    public val width: Int,
+    public val height: Int,
+    @ColumnInfo(name = "taken_at") public val takenAt: Long?,
+    @ColumnInfo(name = "added_at") public val addedAt: Long,
+) {
+    override fun equals(other: Any?): Boolean = other is PhotoEntity && other.id == id && other.fileId == fileId && other.addedAt == addedAt
+    override fun hashCode(): Int = id.hashCode()
+}
+
+@Dao
+public interface PhotoDao {
+    @Query("SELECT * FROM photos ORDER BY added_at DESC, id") public fun observeAll(): Flow<List<PhotoEntity>>
+    @Query("SELECT COUNT(*) FROM photos") public fun observeCount(): Flow<Int>
+    @Query("SELECT * FROM photos ORDER BY added_at DESC, id") public suspend fun all(): List<PhotoEntity>
+    @Query("SELECT * FROM photos WHERE id = :id") public suspend fun byId(id: String): PhotoEntity?
+    @androidx.room.Insert public suspend fun insert(photo: PhotoEntity)
+    @androidx.room.Insert public suspend fun insertAll(photos: List<PhotoEntity>)
+    @Query("DELETE FROM photos WHERE id IN (:ids)") public suspend fun deleteAll(ids: List<String>)
+    @Query("DELETE FROM photos") public suspend fun deleteEverything()
+}
+
 /** The password keeper. A separate file, a separate random key, a separate hardware key. */
 @Database(
-    entities = [FolderEntity::class, PasswordEntryEntity::class],
-    version = 2,
+    entities = [FolderEntity::class, PasswordEntryEntity::class, PhotoEntity::class],
+    version = 3,
     exportSchema = true,
-    autoMigrations = [androidx.room.AutoMigration(from = 1, to = 2)],
+    autoMigrations = [androidx.room.AutoMigration(from = 1, to = 2), androidx.room.AutoMigration(from = 2, to = 3)],
 )
 public abstract class PasswordDatabase : RoomDatabase() {
     public abstract fun folders(): FolderDao
     public abstract fun entries(): PasswordEntryDao
+    public abstract fun photos(): PhotoDao
 
     public companion object {
         public const val FILE_NAME: String = "passwords"

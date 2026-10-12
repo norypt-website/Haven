@@ -8,16 +8,17 @@ import java.io.File
 
 /** Reminders, task lists, tasks and vault-scoped settings. Encrypted with the content vault key. */
 @Database(
-    entities = [ReminderEntity::class, TaskListEntity::class, TaskEntity::class, VaultMetaEntity::class],
-    version = 2,
+    entities = [ReminderEntity::class, TaskListEntity::class, TaskEntity::class, VaultMetaEntity::class, NoteEntity::class],
+    version = 3,
     exportSchema = true,
-    autoMigrations = [androidx.room.AutoMigration(from = 1, to = 2)],
+    autoMigrations = [androidx.room.AutoMigration(from = 1, to = 2), androidx.room.AutoMigration(from = 2, to = 3)],
 )
 public abstract class ContentDatabase : RoomDatabase() {
     public abstract fun reminders(): ReminderDao
     public abstract fun taskLists(): TaskListDao
     public abstract fun tasks(): TaskDao
     public abstract fun meta(): VaultMetaDao
+    public abstract fun notes(): NoteDao
 
     public companion object {
         public const val FILE_NAME: String = "content"

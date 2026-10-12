@@ -100,3 +100,20 @@ public interface VaultMetaDao {
     @Query("DELETE FROM vault_meta WHERE `key` = :key") public suspend fun remove(key: String)
     @Query("SELECT * FROM vault_meta") public suspend fun all(): List<VaultMetaEntity>
 }
+
+@Dao
+public interface NoteDao {
+    @Query("SELECT * FROM notes ORDER BY updated_at DESC") public fun observeAll(): Flow<List<NoteEntity>>
+    /** Local search inside the decrypted connection; the query never leaves the process. */
+    @Query("SELECT * FROM notes WHERE title LIKE '%' || :q || '%' OR body LIKE '%' || :q || '%' ORDER BY updated_at DESC")
+    public fun search(q: String): Flow<List<NoteEntity>>
+    @Query("SELECT * FROM notes WHERE id = :id") public fun observe(id: String): Flow<NoteEntity?>
+    @Query("SELECT * FROM notes WHERE id = :id") public suspend fun byId(id: String): NoteEntity?
+    @Query("SELECT * FROM notes") public suspend fun all(): List<NoteEntity>
+    @Query("SELECT * FROM notes ORDER BY updated_at DESC LIMIT :limit") public fun observeRecent(limit: Int): Flow<List<NoteEntity>>
+    @Query("SELECT COUNT(*) FROM notes") public fun observeCount(): Flow<Int>
+    @Upsert public suspend fun upsert(note: NoteEntity)
+    @Upsert public suspend fun upsertAll(notes: List<NoteEntity>)
+    @Query("DELETE FROM notes WHERE id = :id") public suspend fun delete(id: String)
+    @Query("DELETE FROM notes") public suspend fun deleteEverything()
+}

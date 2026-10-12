@@ -40,6 +40,9 @@ public object EncryptedDatabaseOpener {
     /** Directory for vault databases: excluded from Android auto-backup by default (noBackupFilesDir). */
     public fun vaultDir(context: Context): File = File(context.noBackupFilesDir, "vaults").apply { mkdirs() }
 
+    /** Encrypted photo files of the keeper (see PhotoCipher); deleted together with the databases. */
+    public fun photoDir(context: Context): File = File(vaultDir(context), "photos")
+
     public fun databaseFile(context: Context, name: String): File = File(vaultDir(context), "$name.db")
 
     /**

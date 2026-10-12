@@ -76,3 +76,13 @@ public data class VaultMetaEntity(
     @PrimaryKey val key: String,
     val value: String,
 )
+
+/** A note: a title and free text. Local only, encrypted with the content vault key. */
+@Entity(tableName = "notes")
+public data class NoteEntity(
+    @PrimaryKey val id: String,
+    val title: String,
+    val body: String,
+    @ColumnInfo(name = "created_at") val createdAt: Long,
+    @ColumnInfo(name = "updated_at") val updatedAt: Long,
+)

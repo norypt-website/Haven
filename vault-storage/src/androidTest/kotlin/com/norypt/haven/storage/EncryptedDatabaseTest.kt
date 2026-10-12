@@ -4,8 +4,10 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.norypt.haven.storage.content.ContentDatabase
 import com.norypt.haven.storage.content.ReminderEntity
+import com.norypt.haven.storage.passwords.PasswordDatabase
 import kotlinx.coroutines.runBlocking
 import org.junit.After
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
@@ -71,5 +73,23 @@ class EncryptedDatabaseTest {
         EncryptedDatabaseOpener.open(context, ContentDatabase::class.java, file, key).close()
         assertTrue(EncryptedDatabaseOpener.deleteDatabaseFiles(file))
         assertFalse(file.exists())
+    }
+
+    @Test fun contentDatabaseOpensAtV3WithNotes() = kotlinx.coroutines.runBlocking {
+        val key = ByteArray(32) { 3 }
+        val db = ContentDatabase.open(context, key)
+        db.notes().upsert(com.norypt.haven.storage.content.NoteEntity("n1", "T", "B", 1, 2))
+        assertEquals("T", db.notes().byId("n1")?.title)
+        assertEquals(3, db.openHelper.readableDatabase.version)
+        db.close()
+    }
+
+    @Test fun passwordDatabaseOpensAtV3WithPhotos() = kotlinx.coroutines.runBlocking {
+        val key = ByteArray(32) { 4 }
+        val db = PasswordDatabase.open(context, key)
+        db.photos().insert(com.norypt.haven.storage.passwords.PhotoEntity("p1", "f1", ByteArray(32), "image/jpeg", 10, 1, 1, null, 5))
+        assertArrayEquals(ByteArray(32), db.photos().byId("p1")?.dek)
+        assertEquals(3, db.openHelper.readableDatabase.version)
+        db.close()
     }
 }
