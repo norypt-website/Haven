@@ -6,8 +6,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Key
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -32,6 +32,8 @@ import androidx.navigation.navArgument
 import com.norypt.haven.di.AppContainer
 import com.norypt.haven.security.SessionState
 import com.norypt.haven.ui.navigation.Routes
+import com.norypt.haven.ui.screens.notes.NoteEditScreen
+import com.norypt.haven.ui.screens.notes.NotesScreen
 import com.norypt.haven.ui.screens.onboarding.ForgotPasswordScreen
 import com.norypt.haven.ui.screens.onboarding.SetupScreen
 import com.norypt.haven.ui.screens.onboarding.UnlockScreen
@@ -66,15 +68,15 @@ private val tabs = listOf(
     Tab(Routes.TODAY, "Today", Icons.Filled.Today),
     Tab(Routes.REMINDERS, "Reminders", Icons.Filled.Alarm),
     Tab(Routes.TASKS, "Tasks", Icons.Filled.CheckCircle),
-    Tab(Routes.PASSWORDS, "Passwords", Icons.Filled.Key),
-    Tab(Routes.SETTINGS, "Settings", Icons.Filled.Settings),
+    Tab(Routes.NOTES, "Notes", Icons.Filled.EditNote),
+    Tab(Routes.PASSWORDS, "Vault", Icons.Filled.Lock),
 )
 
 /**
  * Root of the UI. Route guards:
  *  - not initialised  -> Welcome / Setup
  *  - Locked           -> Unlock (no private content is composed while locked)
- *  - Unlocked         -> tabs; the password tab additionally requires its own unlock.
+ *  - Unlocked         -> tabs; the vault tab additionally requires its own unlock.
  */
 @Composable
 fun HavenApp(container: AppContainer, initialOccurrenceId: String?) {
@@ -206,6 +208,11 @@ fun HavenApp(container: AppContainer, initialOccurrenceId: String?) {
                     Routes.TASK_EDIT,
                     arguments = listOf(navArgument("id") { type = NavType.StringType; defaultValue = "" }, navArgument("listId") { type = NavType.StringType; defaultValue = "" }),
                 ) { TaskEditScreen(nav, it.arguments?.getString("id")?.ifEmpty { null }, it.arguments?.getString("listId")?.ifEmpty { null }) }
+
+                composable(Routes.NOTES) { NotesScreen(nav) }
+                composable(Routes.NOTE_EDIT, arguments = listOf(navArgument("id") { type = NavType.StringType; defaultValue = "" })) {
+                    NoteEditScreen(nav, it.arguments?.getString("id")?.ifEmpty { null })
+                }
 
                 composable(Routes.PASSWORDS) { PasswordsScreen(nav) }
                 composable(Routes.PASSWORD_UNLOCK) { PasswordUnlockScreen(nav) }

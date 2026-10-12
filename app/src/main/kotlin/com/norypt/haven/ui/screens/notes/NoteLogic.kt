@@ -14,5 +14,10 @@ object NoteLogic {
     /** A note that was never stored and has no text is dropped; an existing note is kept until deleted. */
     fun shouldStore(isNew: Boolean, title: String, body: String): Boolean = !isNew || title.isNotBlank() || body.isNotBlank()
 
+    /** Words in the whole note: runs of non-space characters in the title and the body. */
+    fun wordCount(title: String, body: String): Int = WORD.findAll(title).count() + WORD.findAll(body).count()
+
+    private val WORD = Regex("\\S+")
+
     fun escapeLike(q: String): String = q.replace("%", "").replace("_", " ").trim()
 }

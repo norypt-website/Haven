@@ -6,17 +6,19 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Alarm
@@ -25,15 +27,17 @@ import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -44,15 +48,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.offset
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import com.norypt.haven.R
 import com.norypt.haven.alarm.AlarmReadiness
+import com.norypt.haven.storage.content.NoteEntity
 import com.norypt.haven.storage.content.Priority
 import com.norypt.haven.ui.LocalAppContainer
 import com.norypt.haven.ui.components.CardDivider
@@ -61,6 +68,7 @@ import com.norypt.haven.ui.components.EntryColor
 import com.norypt.haven.ui.components.GroupCard
 import com.norypt.haven.ui.components.HavenTopBar
 import com.norypt.haven.ui.components.HeroCard
+import com.norypt.haven.ui.components.HeroStat
 import com.norypt.haven.ui.components.IconTile
 import com.norypt.haven.ui.components.ItemRow
 import com.norypt.haven.ui.components.NavCard
@@ -70,12 +78,15 @@ import com.norypt.haven.ui.components.RoundCheck
 import com.norypt.haven.ui.components.RowTextInset
 import com.norypt.haven.ui.components.SectionLabel
 import com.norypt.haven.ui.components.StarIcon
+import com.norypt.haven.ui.components.TintedCard
 import com.norypt.haven.ui.components.brandBrush
 import com.norypt.haven.ui.components.color
 import com.norypt.haven.ui.components.priorityColor
 import com.norypt.haven.ui.components.priorityTileBrush
 import com.norypt.haven.ui.components.tileBrush
 import com.norypt.haven.ui.navigation.Routes
+import com.norypt.haven.ui.screens.notes.NoteLogic
+import com.norypt.haven.ui.screens.notes.NoteTile
 import com.norypt.haven.ui.theme.LocalHavenColors
 import java.time.LocalDate
 import java.time.ZoneId
@@ -100,6 +111,7 @@ fun TodayScreen(nav: NavHostController) {
     val upcoming by vm.upcoming.collectAsState()
     val week by vm.week.collectAsState()
     val dueTasks by vm.dueTasks.collectAsState()
+    val recentNotes by vm.recentNotes.collectAsState()
     val readiness = vm.readiness
     val colors = LocalHavenColors.current
 
@@ -108,7 +120,10 @@ fun TodayScreen(nav: NavHostController) {
     Scaffold(
         topBar = {
             HavenTopBar("Today") {
-                Image(painterResource(R.drawable.norypt_shield), contentDescription = "Norypt", Modifier.padding(end = 16.dp).size(28.dp))
+                IconButton(onClick = { nav.navigate(Routes.SETTINGS) }, modifier = Modifier.size(48.dp)) {
+                    Icon(Icons.Filled.Settings, contentDescription = "Settings")
+                }
+                Image(painterResource(R.drawable.norypt_shield), contentDescription = "Norypt", Modifier.padding(start = 4.dp, end = 16.dp).size(28.dp))
             }
         },
     ) { padding ->
@@ -176,6 +191,26 @@ fun TodayScreen(nav: NavHostController) {
                                 ) { PriorityChip(Priority.of(s.task.priority), Modifier.padding(end = 8.dp)) }
                             }
                         }
+                    }
+                }
+            }
+
+            // ---- Recent notes ----
+            if (recentNotes.isNotEmpty()) item {
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        SectionLabel("Recent notes", Modifier.weight(1f))
+                        TextButton(onClick = { nav.navigate(Routes.NOTES) { popUpTo(Routes.TODAY) { saveState = true }; launchSingleTop = true; restoreState = true } }) {
+                            Text("See all")
+                        }
+                    }
+                    LazyRow(
+                        // Runs edge to edge under the screen padding, so cards scroll out of view at the screen edge.
+                        Modifier.bleed(16.dp),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        items(recentNotes, key = { it.id }) { n -> RecentNoteCard(n) { nav.navigate(Routes.noteEdit(n.id)) } }
                     }
                 }
             }
@@ -317,15 +352,30 @@ private fun TodayHero(upcoming: List<TodayViewModel.Upcoming>, dueCount: Int, st
     }
 }
 
+/** A small note card for the Today strip: tile, title and two lines of the text. */
 @Composable
-private fun HeroStat(icon: ImageVector?, text: String) {
-    Surface(shape = RoundedCornerShape(50), color = Color.White.copy(alpha = 0.16f), contentColor = Color.White) {
-        Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (icon != null) Icon(icon, contentDescription = null, modifier = Modifier.size(15.dp)) else StarIcon(size = 15.dp, contentDescription = null)
-            Spacer(Modifier.width(6.dp))
-            Text(text, style = MaterialTheme.typography.labelMedium)
+private fun RecentNoteCard(note: NoteEntity, onClick: () -> Unit) {
+    val title = NoteLogic.displayTitle(note.title, note.body)
+    val accent = EntryColor.auto(title).color
+    // Fixed width; the height grows with large text instead of cutting it off.
+    TintedCard(accent, onClick, Modifier.width(160.dp).heightIn(min = 120.dp)) {
+        Column(Modifier.padding(12.dp)) {
+            NoteTile(title, accent, size = 30.dp, corner = 9.dp)
+            Spacer(Modifier.height(10.dp))
+            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val preview = NoteLogic.preview(note.title, note.body)
+            if (preview.isNotEmpty()) {
+                Text(preview, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
         }
     }
+}
+
+/** Widens this element by [horizontal] on both sides, into the parent's padding. */
+private fun Modifier.bleed(horizontal: Dp): Modifier = layout { measurable, constraints ->
+    val extra = horizontal.roundToPx() * 2
+    val placeable = measurable.measure(constraints.offset(horizontal = extra))
+    layout(placeable.width - extra, placeable.height) { placeable.place(-extra / 2, 0) }
 }
 
 /** Alarm tile in the reminder's priority colour; grey with a crossed-out alarm while it is off. */

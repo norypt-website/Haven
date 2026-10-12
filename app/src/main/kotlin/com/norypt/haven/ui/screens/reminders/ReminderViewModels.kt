@@ -16,6 +16,7 @@ import com.norypt.haven.recurrence.Occurrence
 import com.norypt.haven.recurrence.OccurrenceKey
 import com.norypt.haven.recurrence.OccurrenceKeys
 import com.norypt.haven.recurrence.Schedule
+import com.norypt.haven.storage.content.NoteEntity
 import com.norypt.haven.storage.content.Priority
 import com.norypt.haven.storage.content.TaskEntity
 import kotlinx.coroutines.Dispatchers
@@ -329,6 +330,8 @@ class MissedViewModel(private val container: AppContainer) : ViewModel() {
 
 // ---------------------------------------------------------------------------------------------
 
+private const val RECENT_NOTES = 5
+
 class TodayViewModel(private val container: AppContainer) : ViewModel() {
     data class Upcoming(val reminder: Reminder, val occurrence: Occurrence)
     data class DueTask(val task: TaskEntity, val due: LocalDateTime, val overdue: Boolean)
@@ -347,6 +350,10 @@ class TodayViewModel(private val container: AppContainer) : ViewModel() {
 
     private val reminders: Flow<List<Reminder>> = safeFlow { container.reminders.observeAll() }
     private val tasks: Flow<List<TaskEntity>> = safeFlow { container.tasks.observeAllTasks() }
+
+    /** The most recently edited notes, for the strip under the starred items. */
+    val recentNotes: StateFlow<List<NoteEntity>> = safeFlow { container.notes.observeRecent(RECENT_NOTES) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** Starred reminders (by next occurrence) followed by starred open tasks (by due date). */
     val starred: StateFlow<List<Starred>> = reminders.startWithEmptyReminders()

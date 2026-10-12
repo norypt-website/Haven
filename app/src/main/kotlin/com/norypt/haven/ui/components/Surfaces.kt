@@ -37,6 +37,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -315,6 +316,52 @@ fun HeroCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() 
     Surface(modifier = modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = Color.Transparent, contentColor = Color.White) {
         Column(Modifier.fillMaxWidth().background(brandBrush()).padding(20.dp), content = content)
     }
+}
+
+/** A frosted count on a [HeroCard]: icon and text in white. A null [icon] shows the gold star. */
+@Composable
+fun HeroStat(icon: ImageVector?, text: String) {
+    Surface(shape = RoundedCornerShape(50), color = Color.White.copy(alpha = 0.16f), contentColor = Color.White) {
+        Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (icon != null) Icon(icon, contentDescription = null, modifier = Modifier.size(15.dp)) else StarIcon(size = 15.dp, contentDescription = null)
+            Spacer(Modifier.width(6.dp))
+            Text(text, style = MaterialTheme.typography.labelMedium)
+        }
+    }
+}
+
+/** The frosted square at the top right of a [HeroCard]: a white icon on white at 16%. Decorative. */
+@Composable
+fun HeroIcon(icon: ImageVector, modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .size(52.dp)
+            .background(Color.White.copy(alpha = 0.16f), RoundedCornerShape(16.dp))
+            .clearAndSetSemantics { },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(28.dp))
+    }
+}
+
+/**
+ * A card washed in its item's colour: [accent] at 10% (16% in dark) over the low surface, a
+ * hairline of the same colour and a soft shadow tinted with it. Note cards and the Today strip.
+ */
+@Composable
+fun TintedCard(accent: Color, onClick: () -> Unit, modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    val dark = LocalHavenColors.current.isDark
+    val shape = RoundedCornerShape(CardRadius)
+    // Composited to an opaque colour: a translucent fill would let the shadow show through.
+    val fill = accent.copy(alpha = if (dark) 0.16f else 0.10f).compositeOver(MaterialTheme.colorScheme.surfaceContainerLow)
+    Surface(
+        onClick = onClick,
+        modifier = modifier.shadow(elevation = 8.dp, shape = shape, ambientColor = accent, spotColor = accent),
+        shape = shape,
+        color = fill,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.22f)),
+    ) { Column(content = content) }
 }
 
 /** Stands in for a row's tile while the row is selected in selection mode. */

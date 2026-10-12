@@ -55,6 +55,7 @@ import com.norypt.haven.ui.components.SectionLabel
 import com.norypt.haven.ui.components.color
 import com.norypt.haven.ui.theme.NoryptColors
 import com.norypt.haven.ui.components.HavenTopBar
+import com.norypt.haven.ui.up
 import com.norypt.haven.ui.navigation.Routes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -70,7 +71,7 @@ fun SettingsScreen(nav: NavHostController) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        HavenTopBar(title = "Settings")
+        HavenTopBar(title = "Settings", onBack = { nav.up() })
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp)) {
             HeroCard {
                 Row(verticalAlignment = Alignment.CenterVertically) {

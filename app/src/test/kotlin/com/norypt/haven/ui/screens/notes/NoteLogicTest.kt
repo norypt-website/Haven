@@ -13,4 +13,17 @@ class NoteLogicTest {
     @Test fun newNoteWithTextIsStored() { assertThat(NoteLogic.shouldStore(isNew = true, title = "", body = "x")).isTrue() }
     @Test fun existingNoteEmptiedIsStillStored() { assertThat(NoteLogic.shouldStore(isNew = false, title = "", body = "")).isTrue() }
     @Test fun likeWildcardsAreNeutralised() { assertThat(NoteLogic.escapeLike(" 50%_off ")).isEqualTo("50 off") }
+
+    @Test fun wordsAreCountedInTitleAndBody() {
+        assertThat(NoteLogic.wordCount("Shopping list", " milk,  eggs\nbread ")).isEqualTo(5)
+        assertThat(NoteLogic.wordCount(" ", "\n")).isEqualTo(0)
+    }
+
+    @Test fun relativeTimes() {
+        val now = 10_000_000_000L
+        assertThat(relativeTime(now - 10_000, now)).isEqualTo("Just now")
+        assertThat(relativeTime(now - 12 * 60_000, now)).isEqualTo("12 min ago")
+        assertThat(relativeTime(now - 3 * 3_600_000, now)).isEqualTo("3 h ago")
+        assertThat(relativeTime(now - 30 * 3_600_000, now)).isEqualTo("Yesterday")
+    }
 }
