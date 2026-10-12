@@ -10,6 +10,7 @@ import com.norypt.haven.crypto.Argon2idKeyDerivation
 import com.norypt.haven.crypto.KeyringStore
 import com.norypt.haven.crypto.VaultKeyManager
 import com.norypt.haven.data.AppPreferences
+import com.norypt.haven.data.NoteRepository
 import com.norypt.haven.data.PasswordRepository
 import com.norypt.haven.data.ReminderRepository
 import com.norypt.haven.data.TaskRepository
@@ -72,5 +73,6 @@ class AppContainer(val app: Application) {
     val reminders = ReminderRepository(session, alarmRuntime)
     val tasks = TaskRepository(session, alarmRuntime)
     val passwords = PasswordRepository(session)
+    val notes = NoteRepository(session)
     val backups = BackupManager(app, session, alarmRuntime)
 }

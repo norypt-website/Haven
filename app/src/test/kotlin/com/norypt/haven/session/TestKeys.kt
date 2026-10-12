@@ -74,3 +74,24 @@ class TestWrapping : WrappingKeyProvider {
         keys.remove(alias)
     }
 }
+
+/**
+ * A real [VaultSession] over an initialised keyring (test KDF, in-memory wrapping keys) that has
+ * never been unlocked, so [VaultSession.contentOrNull] is null. [dir] holds the keyring file.
+ */
+fun lockedTestSession(
+    app: android.app.Application,
+    dir: java.io.File,
+    password: String = "test password",
+    kdf: TestKdf = TestKdf(),
+    wrapping: TestWrapping = TestWrapping(),
+): VaultSession {
+    com.norypt.haven.alarm.AlarmRuntime.config = com.norypt.haven.alarm.AlarmRuntimeConfig(mainActivity = Any::class.java, ringActivity = Any::class.java)
+    com.norypt.haven.alarm.AlarmRuntime.resetForTesting()
+    val keys = com.norypt.haven.crypto.VaultKeyManager(com.norypt.haven.crypto.KeyringStore(java.io.File(dir, "keyring.json")), kdf, wrapping)
+    keys.initialise(password.toByteArray(), Argon2Params.RFC9106_MEMORY_CONSTRAINED, requireDeviceAuth = false).values.forEach { it.destroy() }
+    return VaultSession(
+        app, keys, com.norypt.haven.alarm.AlarmRuntime.get(app), com.norypt.haven.security.GuessThrottle({ 0L }),
+        eraseLimit = { com.norypt.haven.security.EraseAfterFailures.OFF }, onAutoErased = {},
+    ) {}
+}
