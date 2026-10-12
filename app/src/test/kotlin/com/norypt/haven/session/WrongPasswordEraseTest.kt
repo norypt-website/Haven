@@ -13,6 +13,7 @@ import com.norypt.haven.crypto.VaultKeyManager
 import com.norypt.haven.security.EraseAfterFailures
 import com.norypt.haven.security.GuessThrottle
 import com.norypt.haven.security.SessionState
+import com.norypt.haven.storage.EncryptedDatabaseOpener
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertThrows
@@ -43,6 +44,7 @@ class WrongPasswordEraseTest {
     private var clock = 1_000_000L
     private var limit = 3
     private var autoErased = 0
+    private var keeperClosed = 0
 
     @Before fun setUp() {
         app = ApplicationProvider.getApplicationContext()
@@ -55,7 +57,7 @@ class WrongPasswordEraseTest {
 
     @After fun tearDown() = AlarmRuntime.resetForTesting()
 
-    private fun session() = VaultSession(app, keys, AlarmRuntime.get(app), throttle, eraseLimit = { limit }, onAutoErased = { autoErased++ }) {}
+    private fun session() = VaultSession(app, keys, AlarmRuntime.get(app), throttle, eraseLimit = { limit }, onAutoErased = { autoErased++ }, onKeeperClosed = { keeperClosed++ }) {}
 
     /** Lets the wait after the previous wrong password run out. */
     private fun waitItOut() { clock += throttle.remainingDelayMs() }
@@ -230,6 +232,44 @@ class WrongPasswordEraseTest {
         s.eraseEverything {}
         assertThat(throttle.failureCount).isEqualTo(0)
         assertThat(autoErased).isEqualTo(0)
+    }
+
+    /** A stand-in photo file in the keeper's photo directory. */
+    private fun photoDirWithAFile(): File =
+        EncryptedDatabaseOpener.photoDir(app).apply { mkdirs(); File(this, "0".repeat(32)).writeText("x") }
+
+    @Test fun automaticEraseRemovesThePhotoDirectory() = runBlocking {
+        val dir = photoDirWithAFile()
+        val s = session()
+        s.unlockContent("guess 1".pw()); waitItOut()
+        s.unlockContent("guess 2".pw()); waitItOut()
+        assertThat(s.unlockContent("guess 3".pw())).isEqualTo(UnlockResult.Erased)
+        assertThat(dir.exists()).isFalse()
+        assertThat(keeperClosed).isEqualTo(1)
+    }
+
+    @Test fun erasingByHandRemovesThePhotoDirectory() = runBlocking {
+        val dir = photoDirWithAFile()
+        session().eraseEverything {}
+        assertThat(dir.exists()).isFalse()
+        assertThat(keeperClosed).isEqualTo(1)
+    }
+
+    @Test fun duressRemovesThePhotoDirectoryWithoutExtraWork() = runBlocking<Unit> {
+        keys.setDuress(RIGHT.toByteArray(), DURESS.toByteArray(), params)
+        photoDirWithAFile()
+        val s = session()
+        var before = kdf.calls
+        s.unlockContent("guess".pw())
+        val wrong = kdf.calls - before
+        assertThat(keeperClosed).isEqualTo(0)
+        waitItOut()
+        before = kdf.calls
+        assertThat(s.unlockContent(DURESS.pw())).isEqualTo(UnlockResult.WrongPassword(15_000, attemptsLeft = 1))
+        // Moved away at once (deleted in the background), and still exactly the work of a wrong password.
+        assertThat(EncryptedDatabaseOpener.photoDir(app).exists()).isFalse()
+        assertThat(kdf.calls - before).isEqualTo(wrong)
+        assertThat(keeperClosed).isEqualTo(1)
     }
 
     @Test fun attemptsLeftIsReportedOnlyAfterAWrongPassword() = runBlocking {

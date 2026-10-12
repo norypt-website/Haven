@@ -14,10 +14,14 @@ import com.norypt.haven.data.NoteRepository
 import com.norypt.haven.data.PasswordRepository
 import com.norypt.haven.data.ReminderRepository
 import com.norypt.haven.data.TaskRepository
+import com.norypt.haven.photos.AndroidPhotoImaging
+import com.norypt.haven.photos.PhotoFileStore
+import com.norypt.haven.photos.PhotoVault
 import com.norypt.haven.security.GuessThrottle
 import com.norypt.haven.security.LockController
 import com.norypt.haven.security.SensitiveClipboard
 import com.norypt.haven.session.VaultSession
+import com.norypt.haven.storage.EncryptedDatabaseOpener
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -56,6 +60,8 @@ class AppContainer(val app: Application) {
         app, keyManager, alarmRuntime, throttle,
         eraseLimit = { prefs.eraseAfterFailures },
         onAutoErased = { prefs.clearAll(); prefs.erasedAfterWrongPasswords = true },
+        // Read only when the keeper closes, long after construction.
+        onKeeperClosed = { photos.clearCaches() },
     ) {
         clipboard.clearIfOwn()
         lockController.onLocked()
@@ -74,5 +80,6 @@ class AppContainer(val app: Application) {
     val tasks = TaskRepository(session, alarmRuntime)
     val passwords = PasswordRepository(session)
     val notes = NoteRepository(session)
+    val photos = PhotoVault(session, { PhotoFileStore(EncryptedDatabaseOpener.photoDir(app)) }, AndroidPhotoImaging())
     val backups = BackupManager(app, session, alarmRuntime)
 }

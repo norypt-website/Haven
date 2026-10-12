@@ -85,6 +85,7 @@ fun lockedTestSession(
     password: String = "test password",
     kdf: TestKdf = TestKdf(),
     wrapping: TestWrapping = TestWrapping(),
+    onKeeperClosed: () -> Unit = {},
 ): VaultSession {
     com.norypt.haven.alarm.AlarmRuntime.config = com.norypt.haven.alarm.AlarmRuntimeConfig(mainActivity = Any::class.java, ringActivity = Any::class.java)
     com.norypt.haven.alarm.AlarmRuntime.resetForTesting()
@@ -93,5 +94,27 @@ fun lockedTestSession(
     return VaultSession(
         app, keys, com.norypt.haven.alarm.AlarmRuntime.get(app), com.norypt.haven.security.GuessThrottle({ 0L }),
         eraseLimit = { com.norypt.haven.security.EraseAfterFailures.OFF }, onAutoErased = {},
+        onKeeperClosed = onKeeperClosed,
     ) {}
+}
+
+/**
+ * Like [lockedTestSession], with the keeper unlocked by [password]. The JVM has no SQLCipher, so
+ * the keeper is an in-memory Room database (plain SQLite, same queries); each unlock opens a new one.
+ */
+fun unlockedTestSession(
+    app: android.app.Application,
+    dir: java.io.File,
+    password: String = "test password",
+    kdf: TestKdf = TestKdf(),
+    wrapping: TestWrapping = TestWrapping(),
+    onKeeperClosed: () -> Unit = {},
+): VaultSession {
+    val session = lockedTestSession(app, dir, password, kdf, wrapping, onKeeperClosed)
+    session.openKeeperDatabase = { context, _ ->
+        androidx.room.Room.inMemoryDatabaseBuilder(context, com.norypt.haven.storage.passwords.PasswordDatabase::class.java).build()
+    }
+    val result = kotlinx.coroutines.runBlocking { session.unlockPasswords(password.toCharArray()) }
+    check(result == UnlockResult.Success) { "test keeper did not open: $result" }
+    return session
 }

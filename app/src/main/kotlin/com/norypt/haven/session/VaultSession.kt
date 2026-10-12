@@ -10,6 +10,7 @@ import com.norypt.haven.crypto.VaultCryptoException
 import com.norypt.haven.crypto.VaultIds
 import com.norypt.haven.crypto.VaultKeyManager
 import com.norypt.haven.crypto.Wipe
+import com.norypt.haven.photos.PhotoFileStore
 import com.norypt.haven.security.EraseAfterFailures
 import com.norypt.haven.security.GuessThrottle
 import com.norypt.haven.security.SafeLog
@@ -72,6 +73,11 @@ class VaultSession(
     private val eraseLimit: () -> Int,
     /** Runs at the end of an automatic erase, once the vault is gone (app preferences, the note for the welcome screen). */
     private val onAutoErased: () -> Unit,
+    /**
+     * Runs whenever the keeper closes: closing the keeper, a lock, an erase, a duress wipe (the
+     * photo vault drops its in-memory thumbnails here). Must be quick and must not throw.
+     */
+    private val onKeeperClosed: () -> Unit = {},
     private val onLocked: () -> Unit,
 ) {
     private val mutex = Mutex()
@@ -101,6 +107,9 @@ class VaultSession(
     @Volatile private var passwordDb: PasswordDatabase? = null
     @Volatile var hardwareLevel: SecurityLevel? = null
         private set
+
+    /** Opens the keeper database with its raw key. Replaced only by JVM tests, which have no SQLCipher. */
+    internal var openKeeperDatabase: (Context, ByteArray) -> PasswordDatabase = PasswordDatabase::open
 
     fun isInitialised(): Boolean = keys.isInitialised()
 
@@ -174,7 +183,7 @@ class VaultSession(
                     contentDb = ContentDatabase.open(context, key.bytes())
                 } else {
                     passwordDb?.close()
-                    passwordDb = PasswordDatabase.open(context, key.bytes())
+                    passwordDb = openKeeperDatabase(context, key.bytes())
                 }
             } finally {
                 key.destroy()
@@ -304,7 +313,17 @@ class VaultSession(
         mutex.withLock {
             passwordDb?.close()
             passwordDb = null
+            notifyKeeperClosed()
             if (contentDb != null) _state.value = SessionState.Unlocked(contentOpen = true, passwordsOpen = false)
+        }
+    }
+
+    /** [onKeeperClosed], kept from ever breaking the lock, erase or duress path that calls it. */
+    private fun notifyKeeperClosed() {
+        try {
+            onKeeperClosed()
+        } catch (e: Exception) {
+            SafeLog.e("VaultSession", "keeper closed", e)
         }
     }
 
@@ -351,6 +370,7 @@ class VaultSession(
             _state.value = SessionState.Locked
         }
         onLocked()
+        notifyKeeperClosed()
     }
 
     /** Synchronous variant for lifecycle callbacks that cannot suspend. */
@@ -403,9 +423,10 @@ class VaultSession(
 
     /**
      * Silent duress response, run while the caller holds [mutex]: close everything, cancel all
-     * alarms, leave same-size random files where the databases were, retire the hardware keys and
-     * scramble the key file so no password opens it any more. Nothing is logged or shown, and no
-     * key derivation runs, so the whole entry takes as long as a wrong password.
+     * alarms, leave same-size random files where the databases were, retire the hardware keys,
+     * scramble the key file so no password opens it any more, and move the photo files away to be
+     * deleted in the background. Nothing is logged or shown, and no key derivation runs, so the
+     * whole entry takes as long as a wrong password.
      */
     private fun duressWipe() {
         duressClosedDatabases = contentDb != null || passwordDb != null
@@ -418,12 +439,15 @@ class VaultSession(
         // screen must stay exactly as after a wrong password; when databases were open, [attempt]
         // finishes with a lock once the attempt has been counted.
         keys.duressScramble()
+        // A rename only (the delete runs on its own thread), so the entry still takes as long as a wrong password.
+        PhotoFileStore.retireAsync(EncryptedDatabaseOpener.photoDir(context))
+        notifyKeeperClosed()
     }
 
     /**
-     * Erase the entire Haven vault: retire hardware keys, delete the keyring and both database
-     * files, clear the alarm store and preferences. Requires the caller to have verified the
-     * password moments before.
+     * Erase the entire Haven vault: retire hardware keys, delete the keyring, both database files
+     * and the photo files, clear the alarm store and preferences. Requires the caller to have
+     * verified the password moments before.
      */
     suspend fun eraseEverything(alsoClearAppPreferences: () -> Unit) {
         withContext(Dispatchers.Default) { mutex.withLock { eraseHoldingLock(alsoClearAppPreferences) } }
@@ -439,6 +463,7 @@ class VaultSession(
             keys.eraseAll()
             EncryptedDatabaseOpener.deleteDatabaseFiles(ContentDatabase.file(context))
             EncryptedDatabaseOpener.deleteDatabaseFiles(PasswordDatabase.file(context))
+            EncryptedDatabaseOpener.photoDir(context).deleteRecursively()
             // The vault is already unreadable here; an alarm that cannot be cancelled must not stop the rest.
             try {
                 alarmRuntime.scheduler.removeAll()
@@ -454,6 +479,7 @@ class VaultSession(
             if (!keys.isInitialised()) throttle.reset()
             _generation.value++
             _state.value = SessionState.Locked
+            notifyKeeperClosed()
         }
     }
 
