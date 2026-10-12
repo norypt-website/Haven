@@ -54,15 +54,18 @@ class PhotoVault(
                     val s = store()
                     val id = UUID.randomUUID().toString()
                     val fileId = s.newFileId()
+                    var photo: PhotoEntity? = null
                     try {
                         s.write(fileId, PhotoCipher.Kind.ORIGINAL) { PhotoCipher.encrypt(dek, id, PhotoCipher.Kind.ORIGINAL, bytes, it) }
                         s.write(fileId, PhotoCipher.Kind.THUMBNAIL) { PhotoCipher.encrypt(dek, id, PhotoCipher.Kind.THUMBNAIL, thumb, it) }
-                        val photo = PhotoEntity(id, fileId, dek.copyOf(), probe.mimeType, bytes.size.toLong(), probe.width, probe.height, takenAt, System.currentTimeMillis())
+                        val entity = PhotoEntity(id, fileId, dek.copyOf(), probe.mimeType, bytes.size.toLong(), probe.width, probe.height, takenAt, System.currentTimeMillis())
+                        photo = entity
                         // Never write into a keeper opened again after this import began.
                         if (session.passwordsOrNull() !== db) throw IllegalStateException("keeper closed")
-                        db.photos().insert(photo)
-                        ImportResult.Ok(photo)
+                        db.photos().insert(entity)
+                        ImportResult.Ok(entity)
                     } catch (t: Throwable) {
+                        photo?.dek?.fill(0)
                         s.delete(fileId)
                         if (t is CancellationException) throw t
                         SafeLog.e("PhotoVault", "import failed", t)
@@ -80,7 +83,7 @@ class PhotoVault(
 
     /** The decoded thumbnail, from memory when it was shown before; null when the keeper is closed or the file is unreadable. */
     suspend fun thumbnail(photo: PhotoEntity): ImageBitmap? = withContext(Dispatchers.IO) {
-        if (session.passwordsOrNull() == null) return@withContext null
+        val db = session.passwordsOrNull() ?: return@withContext null
         thumbs.get(photo.id)?.let { return@withContext it }
         val plain = try {
             store().open(photo.fileId, PhotoCipher.Kind.THUMBNAIL).use { PhotoCipher.decrypt(photo.dek, photo.id, PhotoCipher.Kind.THUMBNAIL, it) }
@@ -89,7 +92,16 @@ class PhotoVault(
             return@withContext null
         }
         try {
-            imaging.decode(plain, AndroidPhotoImaging.THUMB_SIDE)?.also { if (session.passwordsOrNull() != null) thumbs.put(photo.id, it) }
+            val bitmap = imaging.decode(plain, AndroidPhotoImaging.THUMB_SIDE) ?: return@withContext null
+            if (session.passwordsOrNull() !== db) return@withContext null
+            thumbs.put(photo.id, bitmap)
+            // The keeper may have closed (and the cache been cleared) between the check and the put.
+            // The handle is set to null before that clear, so this second check catches it.
+            if (session.passwordsOrNull() !== db) {
+                thumbs.remove(photo.id)
+                return@withContext null
+            }
+            bitmap
         } finally {
             plain.fill(0)
         }
@@ -129,6 +141,9 @@ class PhotoVault(
     fun clearCaches() {
         thumbs.evictAll()
     }
+
+    /** Thumbnails held in memory; for tests. */
+    internal fun cachedThumbnailCount(): Int = thumbs.snapshot().size
 
     private companion object {
         const val LOCKED = "The vault was locked."

@@ -2,14 +2,17 @@ package com.norypt.haven.photos
 
 import android.app.Application
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.test.core.app.ApplicationProvider
 import com.google.common.truth.Truth.assertThat
 import com.norypt.haven.alarm.AlarmRuntime
 import com.norypt.haven.crypto.PhotoCipher
 import com.norypt.haven.security.SessionState
+import com.norypt.haven.session.UnlockResult
 import com.norypt.haven.session.VaultSession
 import com.norypt.haven.session.unlockedTestSession
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Rule
@@ -29,15 +32,22 @@ class PhotoVaultTest {
     @After fun tearDown() = AlarmRuntime.resetForTesting()
 
     private class FakeImaging : PhotoImaging {
+        /** Runs inside [thumbnail], in the middle of an import. */
+        var duringThumbnail: () -> Unit = {}
+        /** Runs inside [decode], after the thumbnail was decrypted. */
+        var duringDecode: () -> Unit = {}
+        var decodes: Boolean = false
         override fun probe(bytes: ByteArray) = if (bytes.isNotEmpty() && bytes[0] == 1.toByte()) Probe(40, 30, "image/jpeg") else null
-        override fun thumbnail(bytes: ByteArray) = byteArrayOf(9, 9)
-        override fun decode(bytes: ByteArray, maxSide: Int): ImageBitmap? = null
+        override fun thumbnail(bytes: ByteArray): ByteArray { duringThumbnail(); return byteArrayOf(9, 9) }
+        override fun decode(bytes: ByteArray, maxSide: Int): ImageBitmap? { duringDecode(); return if (decodes) android.graphics.Bitmap.createBitmap(2, 2, android.graphics.Bitmap.Config.ARGB_8888).asImageBitmap() else null }
     }
 
+    private val imaging = FakeImaging()
+
     private fun newVaultWithSession(onKeeperClosed: () -> Unit = {}): Triple<PhotoVault, PhotoFileStore, VaultSession> {
-        val session = unlockedTestSession(ApplicationProvider.getApplicationContext(), tmp.newFolder("keys"), onKeeperClosed = onKeeperClosed)
+        val session = unlockedTestSession(ApplicationProvider.getApplicationContext(), tmp.newFolder("keys"), password = PASSWORD, onKeeperClosed = onKeeperClosed)
         val store = PhotoFileStore(File(tmp.root, "vaults/photos"))
-        return Triple(PhotoVault(session, { store }, FakeImaging()), store, session)
+        return Triple(PhotoVault(session, { store }, imaging), store, session)
     }
 
     private fun newVault(): Pair<PhotoVault, PhotoFileStore> = newVaultWithSession().let { (v, s, _) -> v to s }
@@ -90,6 +100,55 @@ class PhotoVaultTest {
         assertThat(store.dir.list()?.toList().orEmpty()).isEmpty()
     }
 
+    @Test fun lockingTheKeeperDuringAnImportLeavesNothing() = runTest {
+        val (vault, store, session) = newVaultWithSession()
+        imaging.duringThumbnail = { runBlocking { session.lockPasswords() } }
+        val input = byteArrayOf(1, 2, 3)
+        assertThat(vault.import(input, null)).isEqualTo(PhotoVault.ImportResult.Refused("The vault was locked."))
+        assertThat(store.dir.list()?.toList().orEmpty()).isEmpty()
+        assertThat(input).isEqualTo(byteArrayOf(0, 0, 0))
+        imaging.duringThumbnail = {}
+        assertThat(session.unlockPasswords(PASSWORD.toCharArray())).isEqualTo(UnlockResult.Success)
+        assertThat(vault.observeCount().first()).isEqualTo(0)
+    }
+
+    @Test fun rowsSurviveClosingAndReopeningTheKeeper() = runTest {
+        // Guards the test above: the keeper really is the same database after unlocking again.
+        val (vault, _, session) = newVaultWithSession()
+        vault.import(byteArrayOf(1), null)
+        session.lockPasswords()
+        assertThat(session.unlockPasswords(PASSWORD.toCharArray())).isEqualTo(UnlockResult.Success)
+        assertThat(vault.observeCount().first()).isEqualTo(1)
+    }
+
+    @Test fun thumbnailsAreCachedWhileTheKeeperIsOpenAndDroppedWhenItCloses() = runTest {
+        val (vault, session) = unlockedWithHook()
+        val p = (vault.import(byteArrayOf(1), null) as PhotoVault.ImportResult.Ok).photo
+        imaging.decodes = true
+        assertThat(vault.thumbnail(p)).isNotNull()
+        assertThat(vault.cachedThumbnailCount()).isEqualTo(1)
+        session.lockPasswords()
+        assertThat(vault.cachedThumbnailCount()).isEqualTo(0)
+        assertThat(vault.thumbnail(p)).isNull()
+    }
+
+    @Test fun aThumbnailDecodedWhileTheKeeperClosesIsNotKept() = runTest {
+        val (vault, session) = unlockedWithHook()
+        val p = (vault.import(byteArrayOf(1), null) as PhotoVault.ImportResult.Ok).photo
+        imaging.decodes = true
+        imaging.duringDecode = { runBlocking { session.lockPasswords() } }
+        assertThat(vault.thumbnail(p)).isNull()
+        assertThat(vault.cachedThumbnailCount()).isEqualTo(0)
+    }
+
+    /** A session whose keeper-closed hook clears the vault's caches, as in AppContainer. */
+    private fun unlockedWithHook(): Pair<PhotoVault, VaultSession> {
+        var vault: PhotoVault? = null
+        val session = unlockedTestSession(ApplicationProvider.getApplicationContext(), tmp.newFolder(), password = PASSWORD, onKeeperClosed = { vault?.clearCaches() })
+        val store = PhotoFileStore(File(tmp.root, "vaults/photos"))
+        return PhotoVault(session, { store }, imaging).also { vault = it } to session
+    }
+
     @Test fun reconcileDropsRowsWithoutFiles() = runTest {
         val (vault, store) = newVault()
         val p = (vault.import(byteArrayOf(1), null) as PhotoVault.ImportResult.Ok).photo
@@ -121,5 +180,9 @@ class PhotoVaultTest {
         session.lock()
         assertThat(session.state.value).isEqualTo(SessionState.Locked)
         assertThat(session.passwordsOrNull()).isNull()
+    }
+
+    private companion object {
+        const val PASSWORD = "test password"
     }
 }

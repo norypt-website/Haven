@@ -369,8 +369,9 @@ class VaultSession(
             _generation.value++
             _state.value = SessionState.Locked
         }
-        onLocked()
+        // First: a failing onLocked must not leave decrypted thumbnails behind.
         notifyKeeperClosed()
+        onLocked()
     }
 
     /** Synchronous variant for lifecycle callbacks that cannot suspend. */
@@ -463,7 +464,10 @@ class VaultSession(
             keys.eraseAll()
             EncryptedDatabaseOpener.deleteDatabaseFiles(ContentDatabase.file(context))
             EncryptedDatabaseOpener.deleteDatabaseFiles(PasswordDatabase.file(context))
-            EncryptedDatabaseOpener.photoDir(context).deleteRecursively()
+            // Also the directories an earlier duress wipe moved away: their background delete dies with the process.
+            val photoDir = EncryptedDatabaseOpener.photoDir(context)
+            PhotoFileStore(photoDir).reconcile(emptySet())
+            photoDir.deleteRecursively()
             // The vault is already unreadable here; an alarm that cannot be cancelled must not stop the rest.
             try {
                 alarmRuntime.scheduler.removeAll()

@@ -255,6 +255,23 @@ class WrongPasswordEraseTest {
         assertThat(keeperClosed).isEqualTo(1)
     }
 
+    @Test fun aFailingOnLockedCannotKeepTheKeeperCaches() = runBlocking {
+        val s = VaultSession(app, keys, AlarmRuntime.get(app), throttle, eraseLimit = { limit }, onAutoErased = {}, onKeeperClosed = { keeperClosed++ }) {
+            throw IllegalStateException("onLocked failed")
+        }
+        assertThat(runCatching { s.lock() }.isFailure).isTrue()
+        assertThat(keeperClosed).isEqualTo(1)
+    }
+
+    @Test fun eraseAlsoRemovesPhotosMovedAwayByAnEarlierDuress() = runBlocking {
+        // A duress wipe whose background delete died with the process.
+        val retired = File(EncryptedDatabaseOpener.photoDir(app).parentFile, "photos.del-x").apply { mkdirs(); File(this, "0".repeat(32)).writeText("x") }
+        val dir = photoDirWithAFile()
+        session().eraseEverything {}
+        assertThat(retired.exists()).isFalse()
+        assertThat(dir.exists()).isFalse()
+    }
+
     @Test fun duressRemovesThePhotoDirectoryWithoutExtraWork() = runBlocking<Unit> {
         keys.setDuress(RIGHT.toByteArray(), DURESS.toByteArray(), params)
         photoDirWithAFile()
