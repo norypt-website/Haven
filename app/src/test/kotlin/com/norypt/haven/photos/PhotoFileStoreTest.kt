@@ -11,6 +11,10 @@ class PhotoFileStoreTest {
     @get:Rule val tmp = TemporaryFolder()
     private fun store() = PhotoFileStore(File(tmp.root, "photos"))
 
+    private inline fun <reified T : Throwable> expectThrows(block: () -> Unit) {
+        assertThat(runCatching(block).exceptionOrNull()).isInstanceOf(T::class.java)
+    }
+
     @Test fun writeThenOpen() {
         val s = store(); val id = s.newFileId()
         s.write(id, Kind.ORIGINAL) { it.write(byteArrayOf(1, 2, 3)) }
@@ -61,5 +65,41 @@ class PhotoFileStoreTest {
         val s = store(); s.write(s.newFileId(), Kind.ORIGINAL) { it.write(1) }
         PhotoFileStore.retireAsync(s.dir)
         assertThat(s.dir.exists()).isFalse()
+    }
+
+    @Test fun writerMayCloseTheStreamAndFileIsStillSynced() {
+        val s = store(); val id = s.newFileId()
+        s.write(id, Kind.ORIGINAL) { out -> out.use { it.write(byteArrayOf(4, 5, 6)) } }
+        assertThat(s.open(id, Kind.ORIGINAL).readBytes()).isEqualTo(byteArrayOf(4, 5, 6))
+        assertThat(s.dir.list()!!.toList()).containsExactly(id)
+    }
+
+    @Test fun traversalIdIsRejectedByWriteAndOpen() {
+        val s = store()
+        expectThrows<IllegalArgumentException> { s.write("../x", Kind.ORIGINAL) { it.write(1) } }
+        expectThrows<IllegalArgumentException> { s.open("../x", Kind.ORIGINAL) }
+        assertThat(File(tmp.root, "x").exists()).isFalse()
+    }
+
+    @Test fun wrongLengthIdIsRejected() {
+        val s = store()
+        expectThrows<IllegalArgumentException> { s.write("abc", Kind.ORIGINAL) { it.write(1) } }
+        expectThrows<IllegalArgumentException> { s.open("abc", Kind.THUMBNAIL) }
+    }
+
+    @Test fun reconcileKeepsSiblingsThatAreNotRetiredDirs() {
+        val s = store(); val keep = s.newFileId()
+        s.write(keep, Kind.ORIGINAL) { it.write(1) }
+        File(tmp.root, "content.db").writeText("db")
+        s.reconcile(setOf(keep))
+        assertThat(File(tmp.root, "content.db").readText()).isEqualTo("db")
+    }
+
+    @Test fun reconcileRemovesUnrecognisedFilesInsideDir() {
+        val s = store(); val keep = s.newFileId()
+        s.write(keep, Kind.ORIGINAL) { it.write(1) }
+        File(s.dir, "junk").writeText("x")
+        assertThat(s.reconcile(setOf(keep))).isEqualTo(1)
+        assertThat(s.dir.list()!!.toList()).containsExactly(keep)
     }
 }
