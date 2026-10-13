@@ -9,6 +9,7 @@ import com.norypt.haven.security.SafeLog
 import com.norypt.haven.session.VaultSession
 import com.norypt.haven.storage.passwords.PasswordDatabase
 import com.norypt.haven.storage.passwords.PhotoEntity
+import com.norypt.haven.storage.passwords.PhotoItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
@@ -23,6 +24,9 @@ import kotlin.coroutines.cancellation.CancellationException
 /**
  * The photo vault. Needs the keeper open: every photo's key lives in the keeper database.
  * Plaintext exists only in memory; thumbnails are cached in RAM and dropped whenever the keeper closes.
+ *
+ * The screens only ever hold [PhotoItem]s, which carry no key. Every operation that needs a key
+ * reads the photo's row for that one operation and wipes the key copy straight after.
  */
 class PhotoVault(
     private val session: VaultSession,
@@ -30,7 +34,7 @@ class PhotoVault(
     private val imaging: PhotoImaging,
 ) {
     sealed interface ImportResult {
-        data class Ok(val photo: PhotoEntity) : ImportResult
+        data class Ok(val photo: PhotoItem) : ImportResult
         data class Refused(val reason: String) : ImportResult
     }
 
@@ -46,7 +50,8 @@ class PhotoVault(
 
     private fun dao() = session.passwords().photos()
 
-    fun observeAll(): Flow<List<PhotoEntity>> = dao().observeAll()
+    /** Every photo, without keys. */
+    fun observeAll(): Flow<List<PhotoItem>> = dao().observeItems()
     fun observeCount(): Flow<Int> = dao().observeCount()
 
     /** Encrypts [bytes] into the vault. [bytes] is wiped when this returns, whatever the outcome. */
@@ -71,7 +76,8 @@ class PhotoVault(
                         // Never write into a keeper opened again after this import began.
                         if (session.passwordsOrNull() !== db) throw IllegalStateException("keeper closed")
                         db.photos().insert(entity)
-                        ImportResult.Ok(entity)
+                        entity.dek.fill(0)
+                        ImportResult.Ok(entity.toItem())
                     } catch (t: Throwable) {
                         photo?.dek?.fill(0)
                         s.delete(fileId)
@@ -89,24 +95,31 @@ class PhotoVault(
         }
     }
 
-    /** The decoded thumbnail, from memory when it was shown before; null when the keeper is closed or the file is unreadable. */
-    suspend fun thumbnail(photo: PhotoEntity): ImageBitmap? = withContext(Dispatchers.IO) {
+    /**
+     * The decoded thumbnail of photo [id], from memory when it was shown before. Null when the keeper
+     * is closed, the photo is gone, or it has no readable thumbnail (a damaged file, or a photo
+     * restored on a phone that cannot decode it): the grid then shows "No preview".
+     */
+    suspend fun thumbnail(id: String): ImageBitmap? = withContext(Dispatchers.IO) {
         val db = session.passwordsOrNull() ?: return@withContext null
-        thumbs.get(photo.id)?.let { return@withContext it }
+        thumbs.get(id)?.let { return@withContext it }
+        val photo = db.photos().byId(id) ?: return@withContext null
         val plain = try {
             store().open(photo.fileId, PhotoCipher.Kind.THUMBNAIL).use { PhotoCipher.decrypt(photo.dek, photo.id, PhotoCipher.Kind.THUMBNAIL, it) }
         } catch (e: Exception) {
             SafeLog.e("PhotoVault", "thumbnail unreadable", e)
             return@withContext null
+        } finally {
+            photo.dek.fill(0)
         }
         try {
             val bitmap = imaging.decode(plain, AndroidPhotoImaging.THUMB_SIDE) ?: return@withContext null
             if (session.passwordsOrNull() !== db) return@withContext null
-            thumbs.put(photo.id, bitmap)
+            thumbs.put(id, bitmap)
             // The keeper may have closed (and the cache been cleared) between the check and the put.
             // The handle is set to null before that clear, so this second check catches it.
             if (session.passwordsOrNull() !== db) {
-                thumbs.remove(photo.id)
+                thumbs.remove(id)
                 return@withContext null
             }
             bitmap
@@ -115,19 +128,35 @@ class PhotoVault(
         }
     }
 
-    /** The original bytes. The caller wipes the array after use. Throws when the keeper is closed or the file fails authentication. */
-    suspend fun original(photo: PhotoEntity): ByteArray = withContext(Dispatchers.IO) {
-        session.passwords()
-        store().open(photo.fileId, PhotoCipher.Kind.ORIGINAL).use { PhotoCipher.decrypt(photo.dek, photo.id, PhotoCipher.Kind.ORIGINAL, it) }
+    /**
+     * The original bytes of photo [id]. The caller wipes the array after use. Throws when the keeper
+     * is closed, the photo is gone, or the file fails authentication.
+     */
+    suspend fun original(id: String): ByteArray = withContext(Dispatchers.IO) {
+        val photo = session.passwords().photos().byId(id) ?: throw IOException("no such photo")
+        try {
+            store().open(photo.fileId, PhotoCipher.Kind.ORIGINAL).use { PhotoCipher.decrypt(photo.dek, photo.id, PhotoCipher.Kind.ORIGINAL, it) }
+        } finally {
+            photo.dek.fill(0)
+        }
     }
+
+    /** A photo in the vault whose file is missing or fails authentication. */
+    class DamagedPhotoException(cause: Throwable) : Exception("a hidden photo is damaged", cause)
 
     /**
      * The original bytes for a backup export, read only while [db] (the keeper the export started
-     * with) is still the open one. The caller wipes the array after use.
+     * with) is still the open one. The caller wipes the array after use. Throws
+     * [IllegalStateException] when the keeper closed, [DamagedPhotoException] when the file cannot
+     * be read or fails authentication.
      */
     internal fun originalForExport(db: PasswordDatabase, photo: PhotoEntity): ByteArray {
         check(session.passwordsOrNull() === db) { "keeper closed" }
-        return store().open(photo.fileId, PhotoCipher.Kind.ORIGINAL).use { PhotoCipher.decrypt(photo.dek, photo.id, PhotoCipher.Kind.ORIGINAL, it) }
+        return try {
+            store().open(photo.fileId, PhotoCipher.Kind.ORIGINAL).use { PhotoCipher.decrypt(photo.dek, photo.id, PhotoCipher.Kind.ORIGINAL, it) }
+        } catch (e: Exception) {
+            throw DamagedPhotoException(e)
+        }
     }
 
     /**
@@ -138,31 +167,53 @@ class PhotoVault(
      */
     inner class Staging internal constructor(internal val db: PasswordDatabase, internal val store: PhotoFileStore) {
         private val staged = mutableListOf<PhotoEntity>()
-        val entities: List<PhotoEntity> get() = staged.toList()
+        private val withoutThumbnail = mutableSetOf<String>()
+        internal val entities: List<PhotoEntity> get() = staged.toList()
+
+        /** Staged photos this phone could not decode: kept without a thumbnail. */
+        val withoutPreview: Int get() = withoutThumbnail.size
+
+        /** The files a staged photo consists of: the original, and the thumbnail when there is one. */
+        internal fun fileNames(photo: PhotoEntity): List<String> =
+            if (photo.fileId in withoutThumbnail) listOf(photo.fileId) else listOf(photo.fileId, "${photo.fileId}.t")
 
         /**
          * Encrypts a restored photo under a fresh key and file id; the thumbnail is made again here.
+         * A photo this phone cannot decode is still kept, byte for byte, with the type and size its
+         * record states and no thumbnail: it can be restored to the gallery and opened elsewhere.
          * [bytes] is fully consumed before this returns, so the caller may wipe it at once.
-         * Throws [IllegalArgumentException] for bytes that are not a readable image and
+         * Throws [IllegalArgumentException] for empty or oversized bytes and
          * [IllegalStateException] when the keeper closed since [beginStaging].
          */
         fun add(record: PhotoRecord, bytes: ByteArray) {
             check(session.passwordsOrNull() === db) { "keeper closed" }
             require(bytes.isNotEmpty() && bytes.size <= ImageBounds.MAX_BYTES) { "photo in backup is empty or too large" }
-            val probe = requireNotNull(imaging.probe(bytes)) { "unreadable image in backup" }
-            val thumb = requireNotNull(imaging.thumbnail(bytes)) { "unreadable image in backup" }
+            val probe = imaging.probe(bytes)
+            val thumb = if (probe != null) imaging.thumbnail(bytes) else null
             val fileId = store.newFileId()
             val dek = PhotoCipher.newDek()
             try {
                 store.write(fileId, PhotoCipher.Kind.ORIGINAL) { PhotoCipher.encrypt(dek, record.id, PhotoCipher.Kind.ORIGINAL, bytes, it) }
-                store.write(fileId, PhotoCipher.Kind.THUMBNAIL) { PhotoCipher.encrypt(dek, record.id, PhotoCipher.Kind.THUMBNAIL, thumb, it) }
-                staged += PhotoEntity(record.id, fileId, dek.copyOf(), probe.mimeType, bytes.size.toLong(), probe.width, probe.height, record.takenAtEpochMs, record.addedAtEpochMs)
+                if (thumb != null) {
+                    store.write(fileId, PhotoCipher.Kind.THUMBNAIL) { PhotoCipher.encrypt(dek, record.id, PhotoCipher.Kind.THUMBNAIL, thumb, it) }
+                } else {
+                    withoutThumbnail += fileId
+                }
+                staged += if (probe != null && thumb != null) {
+                    PhotoEntity(record.id, fileId, dek.copyOf(), probe.mimeType, bytes.size.toLong(), probe.width, probe.height, record.takenAtEpochMs, record.addedAtEpochMs)
+                } else {
+                    PhotoEntity(
+                        record.id, fileId, dek.copyOf(), safeMimeType(record.mimeType), bytes.size.toLong(),
+                        record.width.coerceAtLeast(0), record.height.coerceAtLeast(0), record.takenAtEpochMs, record.addedAtEpochMs,
+                    )
+                }
             } catch (t: Throwable) {
+                withoutThumbnail -= fileId
                 store.delete(fileId)
                 throw t
             } finally {
                 dek.fill(0)
-                thumb.fill(0)
+                thumb?.fill(0)
             }
         }
 
@@ -170,6 +221,7 @@ class PhotoVault(
         fun discard() {
             staged.forEach { it.dek.fill(0) }
             staged.clear()
+            withoutThumbnail.clear()
             store.deleteAll()
             synchronized(this@PhotoVault) { if (activeStaging === this) activeStaging = null }
         }
@@ -196,7 +248,7 @@ class PhotoVault(
             files.withLock {
                 check(session.passwordsOrNull() === db) { "keeper closed" }
                 val entities = staging.entities
-                val names = entities.flatMap { listOf(it.fileId, "${it.fileId}.t") }
+                val names = entities.flatMap { staging.fileNames(it) }
                 names.forEach { if (!File(staging.store.dir, it).isFile) throw IOException("a staged photo file is missing") }
                 val live = store()
                 live.dir.mkdirs()
@@ -251,6 +303,7 @@ class PhotoVault(
         val db = session.passwords()
         files.withLock {
             val photos = ids.mapNotNull { db.photos().byId(it) }
+            photos.forEach { it.dek.fill(0) } // only the file ids are needed
             if (photos.isEmpty()) return@withLock
             db.photos().deleteAll(photos.map { it.id }) // keys gone first: the files are unreadable from here on
             val s = store()
@@ -266,6 +319,9 @@ class PhotoVault(
             // Left by a restore that never finished; its keys died with it. A restore still running keeps its own.
             if (synchronized(this@PhotoVault) { activeStaging == null }) PhotoFileStore.stagingDir(s.dir).deleteRecursively()
             val rows = db.photos().all()
+            // Only the keys' rows were needed for their file ids; the keys themselves are not.
+            rows.forEach { it.dek.fill(0) }
+            // A photo is its original: one kept without a thumbnail (see Staging.add) stays.
             val missing = rows.filter { !File(s.dir, it.fileId).exists() }.map { it.id }
             if (missing.isNotEmpty()) db.photos().deleteAll(missing)
             s.reconcile(rows.map { it.fileId }.toSet()) + missing.size
@@ -280,7 +336,16 @@ class PhotoVault(
     /** Thumbnails held in memory; for tests. */
     internal fun cachedThumbnailCount(): Int = thumbs.snapshot().size
 
+    /** Every row, keys included; for tests. */
+    internal suspend fun rowsForTesting(): List<PhotoEntity> = dao().all()
+
     private companion object {
         const val LOCKED = "The vault was locked."
+        private val MIME = Regex("image/[a-z0-9.+-]{1,40}")
+
+        /** A restored record's type, used only for a photo this phone cannot decode; anything odd becomes JPEG. */
+        fun safeMimeType(type: String): String = if (MIME.matches(type)) type else "image/jpeg"
     }
 }
+
+private fun PhotoEntity.toItem() = PhotoItem(id, mimeType, byteSize, width, height, takenAt, addedAt)

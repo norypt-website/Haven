@@ -22,6 +22,9 @@ class FakeImaging : PhotoImaging {
 
 const val TEST_PASSWORD = "test password"
 
+/** The stored row of photo [id], key and file id included. */
+suspend fun PhotoVault.row(id: String) = rowsForTesting().single { it.id == id }
+
 /** A real session with an unlocked file-backed keeper and a photo vault under [tmp]; only image decoding is faked. */
 fun newTestVault(
     tmp: TemporaryFolder,

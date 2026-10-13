@@ -32,6 +32,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -66,6 +67,14 @@ fun BackupScreen(nav: NavHostController) {
     // After a restore every list, reminder and task on screen refers to replaced rows. Start over
     // from Today with an empty back stack so nothing shows the old data or an id that no longer exists.
     LaunchedEffect(vm.restoredJustNow) { if (vm.restoredJustNow) vm.restoredJustNow = false } // the host is rebuilt by VaultSession.generation
+    // A backup or restore with photos can take minutes: the screen stays on until it finishes, so
+    // the screen-off lock does not cut it off. Only while one runs.
+    val view = LocalView.current
+    val working = vm.exporting || vm.restoring
+    DisposableEffect(working) {
+        if (working) view.keepScreenOn = true
+        onDispose { if (working) view.keepScreenOn = false }
+    }
 
     Column(Modifier.fillMaxSize()) {
         HavenTopBar(
@@ -110,12 +119,20 @@ fun BackupScreen(nav: NavHostController) {
     if (vm.showRestoreConfirm) {
         ConfirmDialog(
             title = "Replace everything in this vault with the backup?",
-            body = "All current reminders, tasks, lists and notes" + (if (vm.restorePasswords) ", passwords, folders and photos" else "") + " on this device will be replaced by the contents of the backup file. Alarms are rebuilt from the restored reminders.",
+            body = restoreConfirmBody(
+                restoreVault = vm.restorePasswords && vm.inspection?.header?.contents?.contains("passwords") == true,
+                backupHasPhotos = vm.inspection?.header?.contents?.contains("photos") == true,
+            ),
             confirmLabel = "Replace and restore",
             onConfirm = vm::restore,
             onDismiss = { vm.showRestoreConfirm = false },
         )
     }
+}
+
+@Composable
+private fun KeepOpenHint() {
+    Text("Keep Haven open until it finishes.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 @Composable
@@ -190,7 +207,10 @@ private fun CreateBackupSection(vm: BackupViewModel, nav: NavHostController) {
             OutlinedButton(onClick = { nav.navigate(Routes.PASSWORD_UNLOCK) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Unlock keeper") }
         }
         Spacer(Modifier.height(8.dp))
-        if (vm.exporting) BusyRow("Encrypting and writing the backup…")
+        if (vm.exporting) {
+            BusyRow("Encrypting and writing the backup…")
+            KeepOpenHint()
+        }
         Button(
             onClick = vm::export,
             enabled = vm.keyVerified == true && !vm.busy,
@@ -224,7 +244,7 @@ private fun RestoreSection(vm: BackupViewModel, nav: NavHostController, onChoose
             Spacer(Modifier.height(8.dp))
             val h = ins.header
             val created = runCatching { DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(h.createdAtEpochMs)) }.getOrDefault("unknown")
-            FactRow(FactLevel.INFO, "Created $created", "Written by Haven build ${h.appVersionCode}. Contains: ${h.contents.joinToString { if (it == "content") "reminders and tasks" else if (it == "passwords") "passwords" else it }}.")
+            FactRow(FactLevel.INFO, "Created $created", "Written by Haven build ${h.appVersionCode}. Contains: ${contentsLabel(h.contents)}.")
             when (ins.keyIdMatchesStored) {
                 true -> FactRow(FactLevel.OK, "Matches this vault's current backup key")
                 false -> FactRow(FactLevel.WARNING, "Needs a different backup key — enter it below")
@@ -247,7 +267,10 @@ private fun RestoreSection(vm: BackupViewModel, nav: NavHostController, onChoose
                 Row { OutlinedButton(onClick = { nav.navigate(Routes.PASSWORD_UNLOCK) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Unlock keeper") }; Spacer(Modifier.width(8.dp)) }
             }
             Spacer(Modifier.height(8.dp))
-            if (vm.restoring) BusyRow("Decrypting and restoring…")
+            if (vm.restoring) {
+                BusyRow("Decrypting and restoring…")
+                KeepOpenHint()
+            }
             Button(onClick = vm::requestRestore, enabled = !vm.busy, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Restore from this file") }
         }
         vm.restoreMessage?.let { Spacer(Modifier.height(8.dp)); FactRow(if (vm.restoreOk) FactLevel.OK else FactLevel.WARNING, it) }

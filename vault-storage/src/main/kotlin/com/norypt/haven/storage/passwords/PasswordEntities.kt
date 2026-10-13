@@ -97,9 +97,24 @@ public class PhotoEntity(
     override fun hashCode(): Int = id.hashCode()
 }
 
+/**
+ * A photo as the screens see it: everything but its key and file id. Read by a projection that
+ * never selects `dek`, so no photo key ever reaches the UI's lists.
+ */
+public data class PhotoItem(
+    val id: String,
+    @ColumnInfo(name = "mime_type") val mimeType: String,
+    @ColumnInfo(name = "byte_size") val byteSize: Long,
+    val width: Int,
+    val height: Int,
+    @ColumnInfo(name = "taken_at") val takenAt: Long?,
+    @ColumnInfo(name = "added_at") val addedAt: Long,
+)
+
 @Dao
 public interface PhotoDao {
-    @Query("SELECT * FROM photos ORDER BY added_at DESC, id") public fun observeAll(): Flow<List<PhotoEntity>>
+    @Query("SELECT id, mime_type, byte_size, width, height, taken_at, added_at FROM photos ORDER BY added_at DESC, id")
+    public fun observeItems(): Flow<List<PhotoItem>>
     @Query("SELECT COUNT(*) FROM photos") public fun observeCount(): Flow<Int>
     @Query("SELECT * FROM photos ORDER BY added_at DESC, id") public suspend fun all(): List<PhotoEntity>
     @Query("SELECT * FROM photos WHERE id = :id") public suspend fun byId(id: String): PhotoEntity?

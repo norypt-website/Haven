@@ -60,7 +60,20 @@ sealed interface ExportResult {
 }
 
 sealed interface RestoreResult {
-    data class Success(val reminders: Int, val tasks: Int, val passwords: Int, val notes: Int, val photos: Int) : RestoreResult
+    /**
+     * [passwords] is null when the Vault part was not restored; [photos] is null when no photos were
+     * replaced (the Vault part was not restored, or a format 1 backup, which has no photos and keeps
+     * the ones already here). [photosWithoutPreview] of the restored photos could not be decoded on
+     * this phone: they were kept without a thumbnail.
+     */
+    data class Success(
+        val reminders: Int,
+        val tasks: Int,
+        val passwords: Int?,
+        val notes: Int,
+        val photos: Int?,
+        val photosWithoutPreview: Int = 0,
+    ) : RestoreResult
     data class Failure(val message: String) : RestoreResult
 }
 
@@ -82,6 +95,12 @@ class BackupManager(
     private val photos: PhotoVault,
     /** Argon2id in the app; JVM tests, which cannot load the native library, pass a stand-in. */
     private val kdf: PasswordKdf = Argon2BackupKdf(),
+    /**
+     * Called once per photo written or restored, from a background thread. The app wires it to the
+     * auto-lock's activity timer: a backup the user started must not be cut off by the inactivity
+     * lock halfway through its photos. Screen-off, backgrounding and the manual lock still apply.
+     */
+    private val onActivity: () -> Unit = {},
 ) {
 
     /** Backup key: generated once per vault, stored (encrypted) in the content vault. The user must record it separately. */
@@ -137,10 +156,7 @@ class BackupManager(
             } catch (t: Throwable) {
                 runCatching { resolver.delete(uri, null, null) }
                 if (t is CancellationException) throw t
-                ExportResult.Failure(
-                    if (includePasswords && t is IllegalStateException) "The password keeper was locked during the backup. No file was kept."
-                    else "Backup failed: ${t.javaClass.simpleName}",
-                )
+                ExportResult.Failure(exportFailureMessage(t, includePasswords))
             }
         } finally {
             Wipe.bytes(pw)
@@ -167,7 +183,7 @@ class BackupManager(
             ) { plain ->
                 PayloadV2.write(plain, snap.payload) { rec ->
                     val db = checkNotNull(snap.keeper) { "keeper closed" }
-                    photos.originalForExport(db, snap.photoById.getValue(rec.id))
+                    photos.originalForExport(db, snap.photoById.getValue(rec.id)).also { onActivity() }
                 }
             }
         } finally {
@@ -242,7 +258,7 @@ class BackupManager(
                         2 -> {
                             val stage = if (restorePasswords && session.passwordsOrNull() != null) photos.beginStaging().also { staging = it } else null
                             // Staging.add encrypts the bytes before returning: the reader zeroes them right after.
-                            PayloadV2.read(opened.plaintext) { record, bytes -> stage?.add(record, bytes) }
+                            PayloadV2.read(opened.plaintext) { record, bytes -> stage?.add(record, bytes); onActivity() }
                         }
                         else -> throw BackupFormatException.Malformed("payload format $format")
                     }
@@ -258,7 +274,7 @@ class BackupManager(
             } catch (e: BackupFormatException) {
                 return@withContext RestoreResult.Failure("The file is not a valid Haven backup (${e.javaClass.simpleName}).")
             } catch (e: IllegalArgumentException) {
-                return@withContext RestoreResult.Failure("A photo in the backup could not be read. Nothing was changed.")
+                return@withContext RestoreResult.Failure("A photo in the backup is empty or too large. Nothing was changed.")
             } catch (e: CancellationException) {
                 throw e // an IllegalStateException too; never mistaken for a locked keeper
             } catch (e: IllegalStateException) {
@@ -272,7 +288,7 @@ class BackupManager(
             withContext(NonCancellable) {
                 val content = payload.content
                 val c = session.content()
-                var reminders = 0; var tasks = 0; var notes = 0; var passwords = 0; var photoCount = 0
+                var reminders = 0; var tasks = 0; var notes = 0; var passwords: Int? = null; var photoCount: Int? = null; var withoutPreview = 0
                 if (content != null) {
                     c.withTransaction {
                         c.tasks().deleteEverything(); c.taskLists().deleteEverything(); c.reminders().deleteEverything(); c.notes().deleteEverything()
@@ -302,15 +318,19 @@ class BackupManager(
                     }
                     try {
                         // Passwords and photo rows change in one keeper transaction.
-                        if (stage != null) photoCount = photos.commitStaging(stage, replacePasswords)
-                        else p.withTransaction { replacePasswords(p) }
+                        if (stage != null) {
+                            withoutPreview = stage.withoutPreview // read before the commit discards the staging
+                            photoCount = photos.commitStaging(stage, replacePasswords)
+                        } else {
+                            p.withTransaction { replacePasswords(p) }
+                        }
                     } catch (e: Exception) {
                         if (e is CancellationException) throw e
                         return@withContext RestoreResult.Failure("Reminders, tasks and notes were restored, but passwords and photos could not be (${e.javaClass.simpleName}); they were left as they were.")
                     }
                     passwords = pw2.entries.size
                 }
-                RestoreResult.Success(reminders, tasks, passwords, notes, photoCount)
+                RestoreResult.Success(reminders, tasks, passwords, notes, photoCount, if (photoCount != null) withoutPreview else 0)
             }
         } finally {
             // Idempotent; after a commit there is nothing left to drop.
@@ -340,6 +360,13 @@ class BackupManager(
         const val MIME = "application/octet-stream"
         const val META_BACKUP_KEY = "backup.key.hex"
         const val META_BACKUP_KEY_VERIFIED = "backup.key.verified"
+        /** What the user is told when an export failed with [t]. */
+        internal fun exportFailureMessage(t: Throwable, includePasswords: Boolean): String = when {
+            t is PhotoVault.DamagedPhotoException -> DAMAGED_PHOTO
+            includePasswords && t is IllegalStateException -> "The password keeper was locked during the backup. No file was kept."
+            else -> "Backup failed: ${t.javaClass.simpleName}"
+        }
+        const val DAMAGED_PHOTO = "One hidden photo is damaged and could not be read. Delete it from the Vault (it shows no preview) and try again."
 
         /**
          * Settings a backup may write into the vault. The vault's own backup key and its

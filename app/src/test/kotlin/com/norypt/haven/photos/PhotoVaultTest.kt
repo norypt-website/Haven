@@ -41,10 +41,13 @@ class PhotoVaultTest {
     @Test fun importStoresEncryptedFilesAndARow() = runTest {
         val (vault, store) = newVault()
         val r = vault.import(byteArrayOf(1, 2, 3), takenAt = 5) as PhotoVault.ImportResult.Ok
-        assertThat(store.dir.list()!!.toList()).containsExactly(r.photo.fileId, "${r.photo.fileId}.t")
+        val row = vault.row(r.photo.id)
+        assertThat(store.dir.list()!!.toList()).containsExactly(row.fileId, "${row.fileId}.t")
         // Padded to the 64 KiB bucket and encrypted: the file is never the 3 plaintext bytes.
-        assertThat(store.open(r.photo.fileId, PhotoCipher.Kind.ORIGINAL).readBytes().size).isAtLeast(65_536)
-        assertThat(vault.original(r.photo)).isEqualTo(byteArrayOf(1, 2, 3))
+        assertThat(store.open(row.fileId, PhotoCipher.Kind.ORIGINAL).readBytes().size).isAtLeast(65_536)
+        assertThat(vault.original(r.photo.id)).isEqualTo(byteArrayOf(1, 2, 3))
+        // The import wiped its own copy of the key, not the stored one.
+        assertThat(row.dek.any { it != 0.toByte() }).isTrue()
         assertThat(r.photo.width).isEqualTo(40)
         assertThat(r.photo.takenAt).isEqualTo(5)
         assertThat(vault.observeAll().first().map { it.id }).containsExactly(r.photo.id)
@@ -111,11 +114,11 @@ class PhotoVaultTest {
         val (vault, session) = unlockedWithHook()
         val p = (vault.import(byteArrayOf(1), null) as PhotoVault.ImportResult.Ok).photo
         imaging.decodes = true
-        assertThat(vault.thumbnail(p)).isNotNull()
+        assertThat(vault.thumbnail(p.id)).isNotNull()
         assertThat(vault.cachedThumbnailCount()).isEqualTo(1)
         session.lockPasswords()
         assertThat(vault.cachedThumbnailCount()).isEqualTo(0)
-        assertThat(vault.thumbnail(p)).isNull()
+        assertThat(vault.thumbnail(p.id)).isNull()
     }
 
     @Test fun aThumbnailDecodedWhileTheKeeperClosesIsNotKept() = runTest {
@@ -123,7 +126,7 @@ class PhotoVaultTest {
         val p = (vault.import(byteArrayOf(1), null) as PhotoVault.ImportResult.Ok).photo
         imaging.decodes = true
         imaging.duringDecode = { runBlocking { session.lockPasswords() } }
-        assertThat(vault.thumbnail(p)).isNull()
+        assertThat(vault.thumbnail(p.id)).isNull()
         assertThat(vault.cachedThumbnailCount()).isEqualTo(0)
     }
 
@@ -138,9 +141,43 @@ class PhotoVaultTest {
     @Test fun reconcileDropsRowsWithoutFiles() = runTest {
         val (vault, store) = newVault()
         val p = (vault.import(byteArrayOf(1), null) as PhotoVault.ImportResult.Ok).photo
-        store.delete(p.fileId)
+        store.delete(vault.row(p.id).fileId)
         vault.reconcile()
         assertThat(vault.observeCount().first()).isEqualTo(0)
+    }
+
+    @Test fun reconcileKeepsAPhotoWhoseThumbnailIsMissing() = runTest {
+        val (vault, store) = newVault()
+        val p = (vault.import(byteArrayOf(1, 4), null) as PhotoVault.ImportResult.Ok).photo
+        val fileId = vault.row(p.id).fileId
+        File(store.dir, "$fileId.t").delete()
+        assertThat(vault.reconcile()).isEqualTo(0)
+        assertThat(vault.observeAll().first().map { it.id }).containsExactly(p.id)
+        assertThat(vault.original(p.id)).isEqualTo(byteArrayOf(1, 4))
+        imaging.decodes = true
+        assertThat(vault.thumbnail(p.id)).isNull() // shown as "No preview"
+    }
+
+    @Test fun aDamagedPhotoHasNoThumbnailAndItsOriginalThrows() = runTest {
+        val (vault, store) = newVault()
+        val p = (vault.import(byteArrayOf(1, 4), null) as PhotoVault.ImportResult.Ok).photo
+        val fileId = vault.row(p.id).fileId
+        listOf(fileId, "$fileId.t").forEach { name ->
+            val f = File(store.dir, name)
+            f.writeBytes(f.readBytes().also { it[it.size / 2] = (it[it.size / 2].toInt() xor 1).toByte() })
+        }
+        imaging.decodes = true
+        assertThat(vault.thumbnail(p.id)).isNull()
+        assertThat(runCatching { vault.original(p.id) }.exceptionOrNull()).isNotNull()
+    }
+
+    @Test fun theListTheScreensSeeCarriesNoKeys() = runTest {
+        val (vault, _) = newVault()
+        vault.import(byteArrayOf(1), null)
+        val item = vault.observeAll().first().single()
+        // PhotoItem has no key or file id at all; only these fields reach the UI.
+        assertThat(item.javaClass.declaredFields.map { it.name }.filterNot { it.startsWith("$") })
+            .containsExactly("id", "mimeType", "byteSize", "width", "height", "takenAt", "addedAt")
     }
 
     @Test fun reconcileRemovesFilesWithoutRows() = runTest {
@@ -149,7 +186,8 @@ class PhotoVaultTest {
         val stray = store.newFileId()
         store.write(stray, PhotoCipher.Kind.ORIGINAL) { it.write(1) }
         assertThat(vault.reconcile()).isEqualTo(1)
-        assertThat(store.dir.list()!!.toList()).containsExactly(kept.fileId, "${kept.fileId}.t")
+        val keptFile = vault.row(kept.id).fileId
+        assertThat(store.dir.list()!!.toList()).containsExactly(keptFile, "$keptFile.t")
     }
 
     @Test fun theKeeperClosedHookRunsOnCloseAndOnLock() = runTest {

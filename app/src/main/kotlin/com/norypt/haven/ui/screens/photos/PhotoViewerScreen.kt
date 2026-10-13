@@ -80,7 +80,7 @@ import androidx.core.view.WindowCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import com.norypt.haven.photos.AndroidPhotoImaging
-import com.norypt.haven.storage.passwords.PhotoEntity
+import com.norypt.haven.storage.passwords.PhotoItem
 import com.norypt.haven.ui.LocalAppContainer
 import com.norypt.haven.ui.components.ConfirmDialog
 import com.norypt.haven.ui.components.TagPill
@@ -103,7 +103,7 @@ private val Scrim = Color.Black.copy(alpha = 0.6f)
 
 private sealed interface Loaded {
     data object Loading : Loaded
-    data object Failed : Loaded
+    data class Failed(val message: String) : Loaded
     data class Ready(val image: ImageBitmap) : Loaded
 }
 
@@ -128,8 +128,8 @@ private fun ViewerContent(nav: NavHostController, startId: String) {
         var chrome by rememberSaveable { mutableStateOf(true) }
         var zoomed by remember { mutableStateOf(false) }
         var busy by remember { mutableStateOf(false) }
-        var confirmDelete by remember { mutableStateOf<PhotoEntity?>(null) }
-        var askRemove by remember { mutableStateOf<PhotoEntity?>(null) }
+        var confirmDelete by remember { mutableStateOf<PhotoItem?>(null) }
+        var askRemove by remember { mutableStateOf<PhotoItem?>(null) }
         val imaging = remember { AndroidPhotoImaging() }
         // About 1.5x the screen's longest side: sharp when zoomed in a little, without holding
         // several full-resolution bitmaps (current page and its neighbours) in memory.
@@ -139,7 +139,7 @@ private fun ViewerContent(nav: NavHostController, startId: String) {
         // A deleted or swiped-away page takes its zoom with it.
         LaunchedEffect(current.id) { zoomed = false }
 
-        val restoreOf: (PhotoEntity) -> Unit = { p ->
+        val restoreOf: (PhotoItem) -> Unit = { p ->
             busy = true
             scope.launch {
                 val ok = try { vm.restore(context, p) } finally { busy = false }
@@ -157,7 +157,11 @@ private fun ViewerContent(nav: NavHostController, startId: String) {
         ) { page ->
             val p = list[page]
             val loaded by produceState<Loaded>(Loaded.Loading, p.id) {
-                value = vm.image(p, maxSide, imaging)?.let { Loaded.Ready(it) } ?: Loaded.Failed
+                value = when (val o = vm.image(p, maxSide, imaging)) {
+                    is PhotoViewerViewModel.Opened.Image -> Loaded.Ready(o.bitmap)
+                    PhotoViewerViewModel.Opened.NotDecodable -> Loaded.Failed("This photo can't be shown on this phone. Restore it to the gallery to open it elsewhere.")
+                    PhotoViewerViewModel.Opened.Unreadable -> Loaded.Failed("This photo could not be opened.")
+                }
             }
             ZoomablePhoto(
                 loaded = loaded,
@@ -331,10 +335,10 @@ private fun ZoomablePhoto(
     ) {
         when (loaded) {
             Loaded.Loading -> CircularProgressIndicator(color = Color.White)
-            Loaded.Failed -> Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
+            is Loaded.Failed -> Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
                 Icon(Icons.Filled.BrokenImage, contentDescription = null, tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(48.dp))
                 Spacer(Modifier.size(12.dp))
-                Text("This photo could not be opened.", color = Color.White, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
+                Text(loaded.message, color = Color.White, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
             }
             is Loaded.Ready -> Image(
                 loaded.image,
@@ -360,5 +364,5 @@ private fun LightStatusBarIcons() {
     }
 }
 
-private fun viewerDate(p: PhotoEntity): String =
+private fun viewerDate(p: PhotoItem): String =
     DateTimeFormatter.ofPattern("d MMM yyyy").format(Instant.ofEpochMilli(p.shownAt()).atZone(ZoneId.systemDefault()))

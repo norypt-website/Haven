@@ -38,6 +38,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.HideImage
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material3.Button
@@ -77,7 +78,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import com.norypt.haven.security.LockController
-import com.norypt.haven.storage.passwords.PhotoEntity
+import com.norypt.haven.storage.passwords.PhotoItem
 import com.norypt.haven.ui.LocalAppContainer
 import com.norypt.haven.ui.components.ConfirmDialog
 import com.norypt.haven.ui.components.HavenTopBar
@@ -135,7 +136,7 @@ internal fun PhotosContent(nav: NavHostController, header: @Composable () -> Uni
                                 try {
                                     list.forEachIndexed { i, p ->
                                         val bytes = try {
-                                            container.photos.original(p)
+                                            container.photos.original(p.id)
                                         } catch (e: CancellationException) {
                                             throw e
                                         } catch (e: Exception) {
@@ -238,6 +239,12 @@ internal fun PhotosContent(nav: NavHostController, header: @Composable () -> Uni
     }
 }
 
+private sealed interface Thumb {
+    data object Loading : Thumb
+    data object NoPreview : Thumb
+    data class Ready(val bitmap: ImageBitmap) : Thumb
+}
+
 /**
  * One grid tile. The thumbnail is decrypted on demand and fades in over a placeholder with a small
  * lock, so loading reads as "decrypting". Selected tiles shrink a little, gain a blue border and a
@@ -246,18 +253,18 @@ internal fun PhotosContent(nav: NavHostController, header: @Composable () -> Uni
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PhotoTile(
-    photo: PhotoEntity,
+    photo: PhotoItem,
     selected: Boolean,
     selectionMode: Boolean,
-    thumbnail: suspend (PhotoEntity) -> ImageBitmap?,
+    thumbnail: suspend (PhotoItem) -> ImageBitmap?,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val scheme = MaterialTheme.colorScheme
-    val thumb by produceState<ImageBitmap?>(null, photo.id) { value = thumbnail(photo) }
+    val thumb by produceState<Thumb>(Thumb.Loading, photo.id) { value = thumbnail(photo)?.let { Thumb.Ready(it) } ?: Thumb.NoPreview }
     val scale by animateFloatAsState(if (selected) 0.9f else 1f, tween(160), label = "tileScale")
-    val label = "Photo, ${spokenDate(photo.shownAt())}"
+    val label = "Photo, ${spokenDate(photo.shownAt())}" + if (thumb == Thumb.NoPreview) ", no preview" else ""
     Box(
         modifier
             .aspectRatio(1f)
@@ -276,12 +283,17 @@ private fun PhotoTile(
                 if (selectionMode) this.selected = selected
             },
     ) {
-        Crossfade(targetState = thumb, animationSpec = tween(220), label = "thumb") { bitmap ->
-            if (bitmap != null) {
-                Image(bitmap, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-            } else {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Crossfade(targetState = thumb, animationSpec = tween(220), label = "thumb") { t ->
+            when (t) {
+                is Thumb.Ready -> Image(t.bitmap, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                Thumb.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Icon(Icons.Filled.Lock, contentDescription = null, tint = scheme.onSurfaceVariant.copy(alpha = 0.4f), modifier = Modifier.size(20.dp))
+                }
+                // Damaged, or restored onto a phone that cannot decode it.
+                Thumb.NoPreview -> Column(Modifier.fillMaxSize().padding(6.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Filled.HideImage, contentDescription = null, tint = scheme.onSurfaceVariant.copy(alpha = 0.7f), modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.height(4.dp))
+                    Text("No preview", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant, textAlign = TextAlign.Center, maxLines = 1)
                 }
             }
         }

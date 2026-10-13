@@ -9,10 +9,11 @@ import com.norypt.haven.crypto.Argon2Params
 import com.norypt.haven.photos.FakeImaging
 import com.norypt.haven.photos.PhotoFileStore
 import com.norypt.haven.photos.PhotoVault
+import com.norypt.haven.photos.row
 import com.norypt.haven.session.VaultSession
 import com.norypt.haven.session.fullyUnlockedTestSession
 import com.norypt.haven.storage.content.NoteEntity
-import com.norypt.haven.storage.passwords.PhotoEntity
+import com.norypt.haven.storage.passwords.PhotoItem
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -56,17 +57,20 @@ class BackupPhotosTest {
     private val passphrase = "backup passphrase"
     private val params = Argon2Params.RFC9106_MEMORY_CONSTRAINED
 
+    /** Photos the manager reported as activity (one per photo written or restored). */
+    private var activity = 0
+
     private fun setUp() {
         session = fullyUnlockedTestSession(app, tmp.newFolder("keys"))
         store = PhotoFileStore(File(tmp.root, "vaults/photos"))
         vault = PhotoVault(session, { store }, imaging)
-        manager = BackupManager(app, session, AlarmRuntime.get(app), vault, TestBackupKdf())
+        manager = BackupManager(app, session, AlarmRuntime.get(app), vault, TestBackupKdf(), onActivity = { activity++ })
     }
 
     /** A readable fake image of [size] bytes (FakeImaging accepts anything starting with 1). */
     private fun image(size: Int, seed: Int): ByteArray = ByteArray(size) { (it * 31 + seed).toByte() }.also { it[0] = 1 }
 
-    private suspend fun import(bytes: ByteArray): PhotoEntity = (vault.import(bytes.copyOf(), null) as PhotoVault.ImportResult.Ok).photo
+    private suspend fun import(bytes: ByteArray): PhotoItem = (vault.import(bytes.copyOf(), null) as PhotoVault.ImportResult.Ok).photo
 
     private suspend fun export(includeVault: Boolean = true): ByteArray =
         ByteArrayOutputStream().also { manager.writeBackup(it, passphrase.toByteArray(), includeVault, params) }.toByteArray()
@@ -95,25 +99,27 @@ class BackupPhotosTest {
         val big = image(1_500_000, 3)
         val small = image(10, 4)
         val p1 = import(big); val p2 = import(small)
-        val oldDeks = listOf(p1.dek.copyOf(), p2.dek.copyOf())
+        val oldDeks = listOf(vault.row(p1.id).dek.copyOf(), vault.row(p2.id).dek.copyOf())
         val file = export()
 
         // Change everything, then restore.
         c.notes().deleteEverything(); c.notes().upsert(NoteEntity("n2", "Other", "gone", 3, 4))
         vault.delete(listOf(p1.id, p2.id))
         val q = import(image(20, 5))
+        val qFile = vault.row(q.id).fileId
 
         val r = restore(file) as RestoreResult.Success
         assertThat(r.notes).isEqualTo(1)
         assertThat(r.photos).isEqualTo(2)
+        assertThat(r.photosWithoutPreview).isEqualTo(0)
         assertThat(notes()).containsExactly("n1" to "kept")
-        val now = vault.observeAll().first()
+        val now = vault.rowsForTesting()
         assertThat(now.map { it.id }).containsExactly(p1.id, p2.id)
-        assertThat(vault.original(now.single { it.id == p1.id })).isEqualTo(big)
-        assertThat(vault.original(now.single { it.id == p2.id })).isEqualTo(small)
+        assertThat(vault.original(p1.id)).isEqualTo(big)
+        assertThat(vault.original(p2.id)).isEqualTo(small)
         now.forEach { e -> oldDeks.forEach { assertThat(e.dek).isNotEqualTo(it) } }
         assertThat(liveFiles()).containsExactlyElementsIn(now.flatMap { listOf(it.fileId, "${it.fileId}.t") })
-        assertThat(liveFiles()).doesNotContain(q.fileId)
+        assertThat(liveFiles()).doesNotContain(qFile)
         assertThat(stagingDir().exists()).isFalse()
     }
 
@@ -121,6 +127,7 @@ class BackupPhotosTest {
         setUp()
         session.content().notes().upsert(NoteEntity("n1", "Title", "body", 1, 2))
         val p = import(image(10, 1))
+        val pFile = vault.row(p.id).fileId
         val (header, plain) = plaintext(export())
         assertThat(header.payloadFormat).isEqualTo(2)
         assertThat(header.contents).containsExactly("content", "passwords", "photos")
@@ -131,7 +138,7 @@ class BackupPhotosTest {
         assertThat(seen).containsExactly(p.id)
         val jsonLength = java.nio.ByteBuffer.wrap(plain, 0, 4).int
         val json = String(plain, 4, jsonLength, Charsets.UTF_8)
-        assertThat(json).doesNotContain(p.fileId)
+        assertThat(json).doesNotContain(pFile)
         assertThat(json).doesNotContain("dek")
     }
 
@@ -163,7 +170,7 @@ class BackupPhotosTest {
 
         assertThat(notes()).containsExactly("n2" to "current")
         assertThat(vault.observeAll().first().map { it.id }).containsExactly(q.id)
-        assertThat(vault.original(vault.observeAll().first().single())).isEqualTo(current)
+        assertThat(vault.original(q.id)).isEqualTo(current)
         assertThat(liveFiles()).isEqualTo(filesBefore)
         assertThat(stagingDir().exists()).isFalse()
     }
@@ -181,21 +188,57 @@ class BackupPhotosTest {
         assertThat(stagingDir().exists()).isFalse()
     }
 
-    @Test fun anUnreadablePhotoInTheBackupChangesNothing() = runTest {
+    @Test fun aPhotoThisPhoneCannotDecodeIsRestoredWithoutAPreview() = runTest {
         setUp()
-        // Written by hand: a well-formed format 2 file whose photo bytes are not an image.
+        // Written by hand: a well-formed format 2 file whose second photo this phone cannot decode.
         val payload = BackupPayload(
             content = ContentSnapshot(emptyList(), emptyList(), emptyList(), notes = listOf(NoteRecord("n1", "T", "from backup", 1, 2))),
-            passwords = PasswordSnapshot(emptyList(), emptyList(), photos = listOf(PhotoRecord("x", "image/jpeg", 3, 1, 1, null, 0))),
+            passwords = PasswordSnapshot(
+                emptyList(), emptyList(),
+                photos = listOf(PhotoRecord("ok", "image/jpeg", 2, 40, 30, null, 0), PhotoRecord("x", "image/heic", 3, 8, 6, null, 0)),
+            ),
         )
-        val file = writeFile(2) { PayloadV2.write(it, payload) { byteArrayOf(7, 7, 7) } }
+        val file = writeFile(2) { PayloadV2.write(it, payload) { rec -> if (rec.id == "ok") byteArrayOf(1, 2) else byteArrayOf(7, 7, 7) } }
         session.content().notes().upsert(NoteEntity("n2", "Other", "current", 3, 4))
-        val q = import(image(30, 9))
-        val r = restore(file)
-        assertThat(r).isEqualTo(RestoreResult.Failure("A photo in the backup could not be read. Nothing was changed."))
-        assertThat(notes()).containsExactly("n2" to "current")
-        assertThat(vault.observeAll().first().map { it.id }).containsExactly(q.id)
+        import(image(30, 9))
+        val r = restore(file) as RestoreResult.Success
+        assertThat(r.photos).isEqualTo(2)
+        assertThat(r.photosWithoutPreview).isEqualTo(1)
+        assertThat(notes()).containsExactly("n1" to "from backup")
+        assertThat(vault.observeAll().first().map { it.id }).containsExactly("ok", "x")
+        assertThat(vault.original("x")).isEqualTo(byteArrayOf(7, 7, 7))
+        assertThat(vault.row("x").mimeType).isEqualTo("image/heic")
+        assertThat(liveFiles()).doesNotContain("${vault.row("x").fileId}.t")
         assertThat(stagingDir().exists()).isFalse()
+        // The next unlock's cleanup keeps it.
+        assertThat(vault.reconcile()).isEqualTo(0)
+        assertThat(vault.original("x")).isEqualTo(byteArrayOf(7, 7, 7))
+    }
+
+    @Test fun everyPhotoWrittenOrRestoredCountsAsActivity() = runTest {
+        setUp()
+        import(image(10, 1)); import(image(10, 2)); import(image(10, 3))
+        activity = 0
+        val file = export()
+        assertThat(activity).isEqualTo(3)
+        activity = 0
+        restore(file) as RestoreResult.Success
+        assertThat(activity).isEqualTo(3)
+    }
+
+    @Test fun aDamagedPhotoStopsTheExportWithAClearMessage() = runTest {
+        setUp()
+        import(image(10, 1))
+        val damaged = import(image(10, 2))
+        val f = File(store.dir, vault.row(damaged.id).fileId)
+        f.writeBytes(f.readBytes().also { it[it.size / 2] = (it[it.size / 2].toInt() xor 1).toByte() })
+        val e = runCatching { export() }.exceptionOrNull()
+        assertThat(e).isInstanceOf(PhotoVault.DamagedPhotoException::class.java)
+        assertThat(BackupManager.exportFailureMessage(e!!, includePasswords = true))
+            .isEqualTo("One hidden photo is damaged and could not be read. Delete it from the Vault (it shows no preview) and try again.")
+        // A keeper that closed mid-export is still told apart.
+        assertThat(BackupManager.exportFailureMessage(IllegalStateException("keeper closed"), includePasswords = true))
+            .isEqualTo("The password keeper was locked during the backup. No file was kept.")
     }
 
     private suspend fun writeFile(payloadFormat: Int, body: (OutputStream) -> Unit): ByteArray = ByteArrayOutputStream().also { out ->
@@ -218,7 +261,8 @@ class BackupPhotosTest {
         session.content().notes().upsert(NoteEntity("n2", "Other", "current", 3, 4))
         val r = restore(writeFile(1) { BackupPayloadJson.encode(formatOne, it) }) as RestoreResult.Success
         assertThat(r.notes).isEqualTo(0)
-        assertThat(r.photos).isEqualTo(0)
+        assertThat(r.passwords).isEqualTo(0)
+        assertThat(r.photos).isNull() // none replaced: a format 1 backup keeps the photos here
         assertThat(notes()).isEmpty()
         assertThat(session.passwords().folders().all().map { it.id }).containsExactly("f")
         assertThat(vault.observeAll().first().map { it.id }).containsExactly(q.id)

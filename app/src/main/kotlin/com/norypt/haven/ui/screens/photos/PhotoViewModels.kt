@@ -12,7 +12,7 @@ import com.norypt.haven.photos.ImageBounds
 import com.norypt.haven.photos.PhotoImaging
 import com.norypt.haven.photos.PhotoVault
 import com.norypt.haven.security.SafeLog
-import com.norypt.haven.storage.passwords.PhotoEntity
+import com.norypt.haven.storage.passwords.PhotoItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,17 +36,17 @@ import java.util.Locale
 import kotlin.coroutines.cancellation.CancellationException
 
 /** When a photo was taken, or when it was added if the gallery did not say. */
-internal fun PhotoEntity.shownAt(): Long = takenAt ?: addedAt
+internal fun PhotoItem.shownAt(): Long = takenAt ?: addedAt
 
 /** Newest first by [shownAt]: the order of the grid and of swiping in the viewer. */
-internal fun sortedForGrid(photos: List<PhotoEntity>): List<PhotoEntity> =
-    photos.sortedWith(compareByDescending<PhotoEntity> { it.shownAt() }.thenBy { it.id })
+internal fun sortedForGrid(photos: List<PhotoItem>): List<PhotoItem> =
+    photos.sortedWith(compareByDescending<PhotoItem> { it.shownAt() }.thenBy { it.id })
 
 /** One month of photos in the grid, headed by e.g. "October 2026". */
-internal data class MonthGroup(val month: YearMonth, val label: String, val photos: List<PhotoEntity>)
+internal data class MonthGroup(val month: YearMonth, val label: String, val photos: List<PhotoItem>)
 
 /** Groups photos by the month of [shownAt], newest month first; photos keep [sortedForGrid] order. */
-internal fun monthGroups(photos: List<PhotoEntity>, zone: ZoneId = ZoneId.systemDefault(), locale: Locale = Locale.getDefault()): List<MonthGroup> {
+internal fun monthGroups(photos: List<PhotoItem>, zone: ZoneId = ZoneId.systemDefault(), locale: Locale = Locale.getDefault()): List<MonthGroup> {
     val format = DateTimeFormatter.ofPattern("LLLL yyyy", locale)
     return sortedForGrid(photos)
         .groupBy { YearMonth.from(Instant.ofEpochMilli(it.shownAt()).atZone(zone)) }
@@ -62,7 +62,7 @@ internal fun spokenDate(epochMs: Long, zone: ZoneId = ZoneId.systemDefault()): S
  * re-opened keeper gets the live connection) and a closed keeper reads as an empty vault instead of
  * crashing the collector, the same pattern as the password list.
  */
-internal fun PhotoVault.observeSorted(): Flow<List<PhotoEntity>> =
+internal fun PhotoVault.observeSorted(): Flow<List<PhotoItem>> =
     flow { emitAll(observeAll()) }.map { sortedForGrid(it) }.catch { emit(emptyList()) }
 
 /** The photo count, or nothing while the keeper is closed (same safe pattern as [observeSorted]). */
@@ -70,7 +70,7 @@ internal fun PhotoVault.observeCountSafely(): Flow<Int?> =
     flow<Int?> { emitAll(observeCount()) }.catch { emit(null) }
 
 class PhotosViewModel(private val vault: PhotoVault) : ViewModel() {
-    val photos: StateFlow<List<PhotoEntity>?> = vault.observeSorted()
+    val photos: StateFlow<List<PhotoItem>?> = vault.observeSorted()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     val selected = MutableStateFlow<Set<String>>(emptySet())
 
@@ -81,8 +81,14 @@ class PhotosViewModel(private val vault: PhotoVault) : ViewModel() {
     fun toggle(id: String) = selected.update { if (id in it) it - id else it + id }
     fun clearSelection() { selected.value = emptySet() }
 
-    /** Null while the keeper is closed or the thumbnail cannot be read; the tile then keeps its placeholder. */
-    suspend fun thumbnail(p: PhotoEntity): ImageBitmap? = runCatching { vault.thumbnail(p) }.getOrNull()
+    /** Null when the thumbnail cannot be read (damaged, or not decodable on this phone); the tile then shows "No preview". */
+    suspend fun thumbnail(p: PhotoItem): ImageBitmap? = try {
+        vault.thumbnail(p.id)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        null
+    }
 
     fun deleteSelected() {
         val ids = selected.value
@@ -274,29 +280,37 @@ class PhotoImportViewModel(
 }
 
 class PhotoViewerViewModel(private val vault: PhotoVault) : ViewModel() {
-    val photos: StateFlow<List<PhotoEntity>?> = vault.observeSorted()
+    val photos: StateFlow<List<PhotoItem>?> = vault.observeSorted()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    /** The decoded photo, or null when it cannot be opened (keeper closed, damaged file, unsupported). */
-    suspend fun image(p: PhotoEntity, maxSide: Int, imaging: PhotoImaging): ImageBitmap? {
+    /** What opening a photo in the viewer gave. */
+    sealed interface Opened {
+        data class Image(val bitmap: ImageBitmap) : Opened
+        /** The original is intact but this phone cannot decode it; it can still be restored to the gallery. */
+        data object NotDecodable : Opened
+        /** The original could not be read: keeper closed, file missing or damaged. */
+        data object Unreadable : Opened
+    }
+
+    suspend fun image(p: PhotoItem, maxSide: Int, imaging: PhotoImaging): Opened {
         val bytes = try {
-            vault.original(p)
+            vault.original(p.id)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            return null
+            return Opened.Unreadable
         }
         return try {
-            withContext(Dispatchers.Default) { imaging.decode(bytes, maxSide) }
+            withContext(Dispatchers.Default) { imaging.decode(bytes, maxSide) }?.let { Opened.Image(it) } ?: Opened.NotDecodable
         } finally {
             bytes.fill(0)
         }
     }
 
     /** Writes the original to Pictures/Haven Restored. False when it could not be read or saved. */
-    suspend fun restore(context: android.content.Context, p: PhotoEntity): Boolean {
+    suspend fun restore(context: android.content.Context, p: PhotoItem): Boolean {
         val bytes = try {
-            vault.original(p)
+            vault.original(p.id)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

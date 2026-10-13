@@ -1,7 +1,7 @@
 package com.norypt.haven.ui.screens.photos
 
 import com.google.common.truth.Truth.assertThat
-import com.norypt.haven.storage.passwords.PhotoEntity
+import com.norypt.haven.storage.passwords.PhotoItem
 import org.junit.Test
 import java.time.LocalDateTime
 import java.time.ZoneOffset
@@ -10,7 +10,7 @@ import java.util.Locale
 class PhotoGroupingTest {
     private fun at(y: Int, m: Int, d: Int) = LocalDateTime.of(y, m, d, 12, 0).toInstant(ZoneOffset.UTC).toEpochMilli()
     private fun photo(id: String, takenAt: Long?, addedAt: Long) =
-        PhotoEntity(id, "f$id", ByteArray(32), "image/jpeg", 1, 1, 1, takenAt, addedAt)
+        PhotoItem(id, "image/jpeg", 1, 1, 1, takenAt, addedAt)
 
     @Test fun groupsByMonthNewestFirstUsingTakenDateWhenKnown() {
         val photos = listOf(

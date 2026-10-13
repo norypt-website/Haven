@@ -6,6 +6,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.cancellation.CancellationException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -50,6 +51,7 @@ object GalleryExport {
             true
         } catch (t: Throwable) {
             runCatching { resolver.delete(uri, null, null) }
+            if (t is CancellationException) throw t
             false
         }
     }

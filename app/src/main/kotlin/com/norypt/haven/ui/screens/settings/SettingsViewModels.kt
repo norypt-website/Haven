@@ -416,6 +416,48 @@ class SecurityViewModel(private val container: AppContainer) : ViewModel() {
 
 /* ---------- Backup & restore ---------- */
 
+/**
+ * The message after a successful restore. Only what was replaced is counted: passwords only when
+ * the Vault part was restored, photos only when the backup had photos to replace them with (a
+ * format 1 backup keeps the photos already here, so it claims nothing about them).
+ */
+internal fun restoreSummary(r: RestoreResult.Success): String {
+    val parts = buildList {
+        add("${r.reminders} reminders"); add("${r.tasks} tasks"); add("${r.notes} notes")
+        r.passwords?.let { add("$it passwords") }
+        r.photos?.let { add(if (it == 1) "1 photo" else "$it photos") }
+    }
+    val counts = parts.dropLast(1).joinToString(", ") + " and " + parts.last()
+    val kept = if (r.passwords != null && r.photos == null) " Photos already in the Vault were kept: this backup has none." else ""
+    val noPreview = when (r.photosWithoutPreview) {
+        0 -> ""
+        1 -> " 1 photo has no preview on this phone; restore it to the gallery to open it elsewhere."
+        else -> " ${r.photosWithoutPreview} photos have no preview on this phone; restore them to the gallery to open them elsewhere."
+    }
+    return "Restored $counts.$kept$noPreview"
+}
+
+/** What a backup file's header says it contains, in the words the restore screen uses. */
+internal fun contentsLabel(contents: List<String>): String = contents.joinToString {
+    when (it) {
+        "content" -> "reminders, tasks and notes"
+        "passwords" -> "passwords"
+        "photos" -> "photos"
+        else -> it
+    }
+}
+
+/** The restore confirmation's body, accurate for backups with and without photos. */
+internal fun restoreConfirmBody(restoreVault: Boolean, backupHasPhotos: Boolean): String {
+    val replaced = "All current reminders, tasks, lists and notes" + when {
+        !restoreVault -> ""
+        backupHasPhotos -> ", passwords, folders and photos"
+        else -> ", passwords and folders"
+    }
+    val kept = if (restoreVault && !backupHasPhotos) " This backup has no photos, so the photos in the Vault are kept." else ""
+    return "$replaced on this device will be replaced by the contents of the backup file.$kept Alarms are rebuilt from the restored reminders."
+}
+
 class BackupViewModel(private val container: AppContainer) : ViewModel() {
     // Backup key
     var keyDisplay by mutableStateOf<String?>(null)
@@ -592,7 +634,7 @@ class BackupViewModel(private val container: AppContainer) : ViewModel() {
                 when (val r = container.backups.restore(uri, chars, key, restorePasswords)) {
                     is RestoreResult.Success -> {
                         restoreOk = true
-                        restoreMessage = "Restored ${r.reminders} reminders, ${r.tasks} tasks, ${r.notes} notes, ${r.passwords} passwords and ${r.photos} photos."
+                        restoreMessage = restoreSummary(r)
                         restoreUri = null; inspection = null; restoreKeyText = ""
                         restoredJustNow = true
                     }

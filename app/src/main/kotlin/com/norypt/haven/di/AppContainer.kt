@@ -81,5 +81,6 @@ class AppContainer(val app: Application) {
     val passwords = PasswordRepository(session)
     val notes = NoteRepository(session)
     val photos = PhotoVault(session, { PhotoFileStore(EncryptedDatabaseOpener.photoDir(app)) }, AndroidPhotoImaging())
-    val backups = BackupManager(app, session, alarmRuntime, photos)
+    // Each photo a backup writes or restores counts as activity; touched on the main thread, like a tap.
+    val backups = BackupManager(app, session, alarmRuntime, photos, onActivity = { appScope.launch { lockController.touch() } })
 }
