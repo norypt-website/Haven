@@ -68,6 +68,8 @@ class NoteEditDeps(
     val addBeforeLock: (suspend () -> Unit) -> () -> Unit,
     /** Outlives the view model: it finishes the last save once the editor has gone. */
     val appScope: CoroutineScope,
+    /** Whether the content vault is open. A save refused while it is closed is a lock racing the editor, not an error. */
+    val vaultOpen: () -> Boolean = { true },
 ) {
     companion object {
         fun of(repo: NoteRepository, session: VaultSession, onActivity: () -> Unit, appScope: CoroutineScope) = NoteEditDeps(
@@ -78,6 +80,7 @@ class NoteEditDeps(
             onActivity = onActivity,
             addBeforeLock = session::addBeforeLock,
             appScope = appScope,
+            vaultOpen = { session.contentOrNull() != null },
         )
     }
 }
@@ -146,19 +149,36 @@ class NoteEditViewModel(private val deps: NoteEditDeps, initialId: String?) : Vi
         pending = viewModelScope.launch { delay(600); saveNow() }
     }
 
-    suspend fun saveNow() {
-        if (!loaded.value) return
-        withContext(NonCancellable) {
+    private val _saveFailed = MutableStateFlow(false)
+    /** The last save was refused while the vault was open (a database error); cleared by the next good save. */
+    val saveFailed: StateFlow<Boolean> = _saveFailed.asStateFlow()
+
+    /**
+     * Stores the current text. False only when storing failed while the vault is open, so the
+     * editor must stay open and say so; a save skipped because the vault closed, the session moved
+     * on or the note was deleted counts as done, as does a new note without text.
+     */
+    suspend fun saveNow(): Boolean {
+        if (!loaded.value) return true
+        return withContext(NonCancellable) {
             writes.withLock {
-                if (deleted || !isSameSession(createdIn, deps.generation())) return@withLock
+                if (deleted || !isSameSession(createdIn, deps.generation())) return@withLock true
                 val text = title.value to body.value
                 if (text != lastStored) {
-                    id = deps.save(id, text.first, text.second) ?: return@withLock
+                    val stored = deps.save(id, text.first, text.second)
+                    if (stored == null) {
+                        val failed = NoteLogic.shouldStore(isNew = id == null, text.first, text.second) && deps.vaultOpen()
+                        _saveFailed.value = failed
+                        return@withLock !failed
+                    }
+                    id = stored
                     lastStored = text
                     _updatedAt.value = System.currentTimeMillis()
                 }
+                _saveFailed.value = false
                 // Typing during the save makes this text stale; the next autosave marks it saved.
                 if ((title.value to body.value) == text) _saved.value = true
+                true
             }
         }
     }

@@ -28,6 +28,8 @@ class NoteEditViewModelTest {
     private var generation = 0
     private var activity = 0
     private var failReads = false
+    private var failSaves = false
+    private var vaultOpen = true
     private val store = ViewModelStore()
 
     @Before fun setUp() = Dispatchers.setMain(dispatcher)
@@ -37,14 +39,18 @@ class NoteEditViewModelTest {
         get = { id -> if (failReads) error("vault closed") else notes[id] },
         save = { id, title, body ->
             saves += id
-            val key = id ?: "new-${notes.size}"
-            notes[key] = NoteEntity(key, title, body, 0, 0); key
+            if (failSaves) null
+            else {
+                val key = id ?: "new-${notes.size}"
+                notes[key] = NoteEntity(key, title, body, 0, 0); key
+            }
         },
         delete = { notes.remove(it) },
         generation = { generation },
         onActivity = { activity++ },
         addBeforeLock = { hook -> hooks += hook; { hooks.remove(hook) } },
         appScope = appScope,
+        vaultOpen = { vaultOpen },
     )
 
     private fun TestScope.editor(id: String?): NoteEditViewModel {
@@ -130,6 +136,39 @@ class NoteEditViewModelTest {
         assertThat(hooks).isEmpty()
         advanceUntilIdle()
         assertThat(saves).hasSize(1)
+    }
+
+    @Test fun aSaveThatFailsWhileTheVaultIsOpenKeepsTheEditorOpen() = runTest(dispatcher) {
+        notes["n1"] = NoteEntity("n1", "Note", "kept", 0, 0)
+        val vm = editor("n1")
+        advanceUntilIdle()
+        failSaves = true
+        vm.onBody("changed")
+        assertThat(vm.saveNow()).isFalse()
+        assertThat(vm.saveFailed.value).isTrue()
+        assertThat(vm.saved.value).isFalse()
+        // The next save that works clears the failure.
+        failSaves = false
+        assertThat(vm.saveNow()).isTrue()
+        assertThat(vm.saveFailed.value).isFalse()
+        assertThat(notes.getValue("n1").body).isEqualTo("changed")
+    }
+
+    @Test fun aSaveRefusedBecauseTheVaultClosedStaysSilent() = runTest(dispatcher) {
+        val vm = editor(null)
+        failSaves = true
+        vaultOpen = false
+        vm.onBody("typed as the vault locked")
+        assertThat(vm.saveNow()).isTrue()
+        assertThat(vm.saveFailed.value).isFalse()
+    }
+
+    @Test fun anEmptyNewNoteIsNotAFailedSave() = runTest(dispatcher) {
+        val vm = editor(null)
+        failSaves = true
+        vm.onTitle("  ")
+        assertThat(vm.saveNow()).isTrue()
+        assertThat(vm.saveFailed.value).isFalse()
     }
 
     @Test fun sameSessionGuard() {

@@ -33,6 +33,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -93,10 +95,18 @@ fun NoteEditScreen(nav: NavHostController, id: String?) {
     // The screen's own scope: if a lock takes the screen away first, the save still finishes
     // (it is non-cancellable) but no navigation happens behind the unlock screen.
     val scope = rememberCoroutineScope()
+    val snackbar = remember { SnackbarHostState() }
     val leave: () -> Unit = {
         if (!leaving) {
             leaving = true
-            scope.launch { vm.saveNow(); nav.up() }
+            scope.launch {
+                // A failed save keeps the editor open, so the text is not lost from view.
+                if (vm.saveNow()) nav.up()
+                else {
+                    leaving = false
+                    snackbar.showSnackbar("Could not save this note.")
+                }
+            }
         }
     }
     BackHandler(onBack = leave)
@@ -106,6 +116,7 @@ fun NoteEditScreen(nav: NavHostController, id: String?) {
     LaunchedEffect(loaded) { if (loaded && id == null) runCatching { focus.requestFocus() } }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             TopAppBar(
                 title = {},
