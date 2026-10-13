@@ -158,7 +158,7 @@ fun SecuritySettingsScreen(nav: NavHostController) {
                 }
                 Spacer(Modifier.height(16.dp))
                 Text(
-                    "Erasing the entire vault retires the device-bound keys, deletes both encrypted databases, cancels all alarms and returns Haven to first-run. Backups you exported are not affected and remain readable with their passphrase and backup key. Flash storage may retain remnants; this is not a guaranteed wipe.",
+                    "Erasing the entire vault retires the device-bound keys, deletes both encrypted databases and all photos, cancels all alarms and returns Haven to first-run. Backups you exported are not affected and remain readable with their passphrase and backup key. Flash storage may retain remnants; this is not a guaranteed wipe.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -211,12 +211,12 @@ fun SecuritySettingsScreen(nav: NavHostController) {
         SecurityViewModel.Step.CONFIRM -> when (vm.action) {
             SecurityViewModel.Action.DELETE_REMINDERS -> ConfirmDialog(
                 title = "Delete all reminders?",
-                body = "Every reminder and its scheduled alarms will be deleted. Tasks, lists and passwords are not affected.",
+                body = "Every reminder and its scheduled alarms will be deleted. Tasks, lists, notes, passwords and photos are not affected.",
                 confirmLabel = "Delete all reminders", onConfirm = vm::confirm, onDismiss = vm::cancel,
             )
             SecurityViewModel.Action.DELETE_TASKS -> ConfirmDialog(
                 title = "Delete all tasks and lists?",
-                body = "Every task and every list will be deleted. Reminders and passwords are not affected.",
+                body = "Every task and every list will be deleted. Reminders, notes, passwords and photos are not affected.",
                 confirmLabel = "Delete all tasks and lists", onConfirm = vm::confirm, onDismiss = vm::cancel,
             )
             SecurityViewModel.Action.DELETE_PASSWORDS -> ConfirmDialog(
@@ -282,7 +282,7 @@ private fun EraseDialog(vm: SecurityViewModel) {
         text = {
             Column {
                 Text(
-                    "This retires the device-bound keys, deletes both encrypted databases, cancels all alarms and returns Haven to first-run. Backups you exported are not affected and remain readable with their passphrase and backup key. Flash storage may retain remnants; this is not a guaranteed wipe.",
+                    "This retires the device-bound keys, deletes both encrypted databases and all photos, cancels all alarms and returns Haven to first-run. Backups you exported are not affected and remain readable with their passphrase and backup key. Flash storage may retain remnants; this is not a guaranteed wipe.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Spacer(Modifier.height(12.dp))

@@ -75,7 +75,7 @@ fun UnlockScreen(onUnlocked: () -> Unit, onAbout: () -> Unit, onForgot: () -> Un
                 FactRow(FactLevel.DANGER, "This vault cannot be opened", unrecoverable)
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Erasing retires the device-bound keys, deletes both encrypted databases, cancels all alarms and returns Haven to first-run. Backups you exported are not affected.",
+                    "Erasing retires the device-bound keys, deletes both encrypted databases and all photos, cancels all alarms and returns Haven to first-run. Backups you exported are not affected.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

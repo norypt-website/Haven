@@ -57,7 +57,7 @@ fun WelcomeScreen(onContinue: () -> Unit) {
         Text("A private place for what matters", style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
         Spacer(Modifier.height(8.dp))
         Text(
-            "Passwords, reminders, and tasks—encrypted.",
+            "Reminders, tasks, notes, passwords and photos—encrypted.",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,

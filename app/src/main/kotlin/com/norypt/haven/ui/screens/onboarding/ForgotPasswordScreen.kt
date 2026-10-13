@@ -71,7 +71,7 @@ fun ForgotPasswordScreen(onErased: () -> Unit, onBack: () -> Unit) {
                 Text("Erase everything and start over", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "All reminders, tasks, lists, passwords and folders on this phone are deleted, the " +
+                    "All reminders, tasks, lists, notes, passwords, folders and photos on this phone are deleted, the " +
                         "device-bound keys are retired and every alarm is cancelled. Haven returns to " +
                         "first-run. This cannot be undone.",
                     style = MaterialTheme.typography.bodyMedium,

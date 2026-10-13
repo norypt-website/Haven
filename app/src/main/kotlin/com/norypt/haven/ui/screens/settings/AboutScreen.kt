@@ -44,7 +44,7 @@ fun AboutScreen(nav: NavHostController) {
                 Text("Haven ${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})", style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
                 Spacer(Modifier.height(4.dp))
                 Text("A private place for what matters", style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
-                Text("Passwords, reminders, and tasks—encrypted.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+                Text("Reminders, tasks, notes, passwords and photos—encrypted.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
                 Spacer(Modifier.height(8.dp))
                 Text("by Norypt — norypt.com", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
             }
@@ -53,7 +53,7 @@ fun AboutScreen(nav: NavHostController) {
             SectionCard {
                 FactRow(FactLevel.OK, "No account required")
                 FactRow(FactLevel.OK, "No internet permission", "Haven never connects to anything. A build check fails if any dependency asks for network access.")
-                FactRow(FactLevel.OK, "Private content is encrypted on this device", "Reminders, tasks and passwords are stored in encrypted databases whose keys need both your password and a key bound to this device.")
+                FactRow(FactLevel.OK, "Private content is encrypted on this device", "Reminders, tasks, notes, passwords and photos are stored encrypted, with keys that need both your password and a key bound to this device.")
                 FactRow(FactLevel.OK, "Alarm times are stored outside the password-protected vault so alarms work after a restart", "Notifications never contain reminder text.")
                 FactRow(FactLevel.OK, "Manual, local, encrypted backups", "A backup needs both its passphrase and the backup key.")
                 FactRow(FactLevel.INFO, "Norypt cannot recover a lost password or backup key")
