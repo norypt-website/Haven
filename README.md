@@ -97,11 +97,13 @@ Release builds are signed out of tree with a `keystore.properties` that never en
 
 ## Status
 
-Version 0.1.5 is feature-complete for its v1 scope. 363 JVM unit tests and the instrumented
+Version 0.2.0 adds notes and the encrypted photo vault. 363 JVM unit tests and the instrumented
 Keystore/SQLCipher suites pass. StrongBox keys, Direct Boot ringing, Doze and battery-saver
 delivery, the duress wipe, the automatic erase after wrong passwords and the full
-backup → wipe → restore cycle were verified on Pixel 9 and Pixel 9a phones running Android 17,
-and internal adversarial code reviews were completed with their findings fixed.
+backup → wipe → restore cycle were verified on Pixel 9 and Pixel 9a phones running Android 17;
+the 0.1.5 → 0.2.0 upgrade, photo import, tamper handling, duress and backups with photos were
+verified on a Pixel 10a running Android 17. Internal adversarial code reviews were completed
+with their findings fixed.
 **No independent security audit has been performed yet.**
 
 ## Security policy
