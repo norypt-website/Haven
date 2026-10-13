@@ -5,13 +5,13 @@
 # Haven
 
 **A private place for what matters.**<br>
-Reminders that really ring, tasks and a password keeper, encrypted on your phone. Nothing leaves it.
+Reminders that really ring, tasks, notes and a Vault for passwords and photos, encrypted on your phone. Nothing leaves it.
 
 [![Release](https://img.shields.io/github/v/release/norypt-website/Haven?display_name=tag&color=3A86FF)](https://github.com/norypt-website/Haven/releases/latest)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-0B132B)](LICENSE)
 [![Android 12+](https://img.shields.io/badge/Android-12%2B-3DDC84?logo=android&logoColor=white)](#requirements)
 ![No network permission](https://img.shields.io/badge/network-none-1A2540)
-![Tests](https://img.shields.io/badge/unit%20tests-359%20passing-2D9E5F)
+![Tests](https://img.shields.io/badge/unit%20tests-363%20passing-2D9E5F)
 
 <sub>By <a href="https://norypt.com">Norypt</a></sub>
 
@@ -34,8 +34,8 @@ have even unlocked the phone.
 | ⏰ **Reminders that ring** | One-time and recurring (daily, weekly, monthly, yearly, every *N*, end rules), exact alarms with full-screen ringing, snooze presets, early "coming up" alerts, quick rescheduling, explicit time-zone and DST policies. |
 | ✅ **Tasks** | Lists, search, due dates, starring, priority levels, and a follow-up alarm if a task is still open after its due time. |
 | 📝 **Notes** | Quick private notes with search, saved as you leave the note. Stored in the encrypted content database, so they travel with backups. |
-| 🖼️ **Photo vault** | Import photos from the gallery. On Android 13 and later Android offers to delete the originals; on Android 12 or with the system picker they stay in the gallery. Each photo is encrypted with its own random key, thumbnails are stored encrypted and decrypted only in memory, and a photo can be restored to *Pictures/Haven Restored* at any time. Location data is removed from hidden photos: Android hands Haven photos without their GPS position. Unlocked together with the password keeper. |
-| 🔑 **Password keeper** | Separately unlocked vault for website logins with a generator (passwords and passphrases), folders, masked reveal and a self-clearing clipboard. |
+| 🖼️ **Photo vault** | Import photos from the gallery. On Android 13 and later Android offers to delete the originals; on Android 12 or with the system picker they stay in the gallery. Each photo is encrypted with its own random key, thumbnails are stored encrypted and decrypted only in memory, and a photo can be restored to *Pictures/Haven Restored* at any time. Location data is removed from hidden photos: Android hands Haven photos without their GPS position. Lives in the Vault and unlocks together with your passwords. |
+| 🔑 **Passwords** | In the separately unlocked Vault: website logins with a generator (passwords and passphrases), folders, masked reveal and a self-clearing clipboard. |
 | 💾 **Two-factor backups** | Encrypted `.hvbk` files in *Downloads/Haven*, notes and photos included. Restoring needs **both** the passphrase you choose and a 256-bit backup key shown once in the app. Cloud pickers are refused. |
 | ⏳ **Wrong-password protection** | Each wrong password waits longer than the last (5 s up to 30 min). After 10 wrong passwords in a row Haven erases the vault; choose 3, 5, 7, 10 or off. |
 | 🛡️ **Duress password** | Opt-in second password. Typed under pressure it silently wipes the vault and shows only "Wrong password", taking exactly as long as a wrong password; afterwards no password opens it. |
@@ -45,7 +45,7 @@ have even unlocked the phone.
 
 - **Two-layer key envelope.** Each vault's random database key is wrapped by an Android Keystore key (StrongBox when the device has one, TEE otherwise, never software in release builds) and then by a key derived from your password with **Argon2id** (64–256 MiB, tuned per device at setup). Both layers are AES-256-GCM with authenticated headers, so envelopes cannot be swapped, downgraded or edited.
 - **Encrypted storage.** Content and passwords live in two independent **SQLCipher** databases in app-private storage that Android never backs up or transfers.
-- **Photos encrypted one by one.** Every photo gets its own random key, held in the encrypted password-keeper database. Files are AES-256-GCM streams padded to fixed sizes and bound to their photo id, so they cannot be swapped or reveal exact sizes. Deleting a photo discards its key first. Backups never contain these keys; a restore encrypts the photos again with new ones.
+- **Photos encrypted one by one.** Every photo gets its own random key, held in the encrypted Vault database. Files are AES-256-GCM streams padded to fixed sizes and bound to their photo id, so they cannot be swapped or reveal exact sizes. Deleting a photo discards its key first. Backups never contain these keys; a restore encrypts the photos again with new ones.
 - **Nothing readable on the lock screen.** Ringing notifications and the Direct Boot alarm store contain only timing and generic text. Screenshots and recents previews are blocked, overlay windows are hidden while Haven is open.
 - **Password change revokes the old one.** Keystore keys are rotated on every change, so an old copy of the key file is useless even to someone who later learns the old password.
 - **Honest limits.** Haven says plainly what it cannot do: it cannot scrub flash remnants after deletion, remove copies already synced to a cloud service, retract what a clipboard history already read, or ring while the phone is off. Deleting data retires the keys instead of pretending to wipe the chip.
@@ -77,7 +77,7 @@ Download the signed APK from the [latest release](https://github.com/norypt-webs
 ```bash
 git clone https://github.com/norypt-website/Haven.git
 cd Haven
-./gradlew testDebugUnitTest :recurrence-engine:test :backup-format:test   # 359 tests
+./gradlew testDebugUnitTest :recurrence-engine:test :backup-format:test   # 363 tests
 ./gradlew assembleDebug                                                    # app/build/outputs/apk/debug/
 ```
 
@@ -97,7 +97,7 @@ Release builds are signed out of tree with a `keystore.properties` that never en
 
 ## Status
 
-Version 0.1.5 is feature-complete for its v1 scope. 359 JVM unit tests and the instrumented
+Version 0.1.5 is feature-complete for its v1 scope. 363 JVM unit tests and the instrumented
 Keystore/SQLCipher suites pass. StrongBox keys, Direct Boot ringing, Doze and battery-saver
 delivery, the duress wipe, the automatic erase after wrong passwords and the full
 backup → wipe → restore cycle were verified on Pixel 9 and Pixel 9a phones running Android 17,
