@@ -196,7 +196,7 @@ private fun DetailContent(nav: NavHostController, id: String) {
     if (confirmDelete && entry != null) {
         ConfirmDialog(
             title = "Delete '${entry.title.ifBlank { "Untitled" }}'",
-            body = "The entry is removed from the password keeper. This cannot be undone.",
+            body = "The entry is removed from the Vault. This cannot be undone.",
             confirmLabel = "Delete",
             onConfirm = {
                 confirmDelete = false

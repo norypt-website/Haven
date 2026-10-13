@@ -203,8 +203,8 @@ private fun CreateBackupSection(vm: BackupViewModel, nav: NavHostController) {
             Text("Photos make backups large.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (vm.includePasswords && !vm.keeperUnlocked) {
-            Text("The password keeper is locked.", style = MaterialTheme.typography.bodyMedium)
-            OutlinedButton(onClick = { nav.navigate(Routes.PASSWORD_UNLOCK) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Unlock keeper") }
+            Text("The Vault is locked.", style = MaterialTheme.typography.bodyMedium)
+            OutlinedButton(onClick = { nav.navigate(Routes.PASSWORD_UNLOCK) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Unlock Vault") }
         }
         Spacer(Modifier.height(8.dp))
         if (vm.exporting) {
@@ -262,9 +262,9 @@ private fun RestoreSection(vm: BackupViewModel, nav: NavHostController, onChoose
             )
             Spacer(Modifier.height(4.dp))
             val hasPasswords = "passwords" in h.contents
-            SwitchRow("Restore Vault (passwords and photos)", vm.restorePasswords && hasPasswords, enabled = hasPasswords && !vm.restoring, detail = if (hasPasswords) "Needs the password keeper unlocked." else "This backup contains no passwords.") { vm.restorePasswords = it }
+            SwitchRow("Restore Vault (passwords and photos)", vm.restorePasswords && hasPasswords, enabled = hasPasswords && !vm.restoring, detail = if (hasPasswords) "Needs the Vault unlocked." else "This backup contains no passwords.") { vm.restorePasswords = it }
             if (vm.restorePasswords && hasPasswords && !vm.keeperUnlocked) {
-                Row { OutlinedButton(onClick = { nav.navigate(Routes.PASSWORD_UNLOCK) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Unlock keeper") }; Spacer(Modifier.width(8.dp)) }
+                Row { OutlinedButton(onClick = { nav.navigate(Routes.PASSWORD_UNLOCK) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Unlock Vault") }; Spacer(Modifier.width(8.dp)) }
             }
             Spacer(Modifier.height(8.dp))
             if (vm.restoring) {

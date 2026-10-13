@@ -73,7 +73,7 @@ private fun VaultHero(passwordCount: Int?, photoCount: Int?) {
         Row(verticalAlignment = Alignment.Top) {
             Column(Modifier.weight(1f)) {
                 Text("Vault", style = MaterialTheme.typography.headlineMedium, color = Color.White, modifier = Modifier.semantics { heading() })
-                Text("Locked with your keeper password", style = MaterialTheme.typography.bodyLarge, color = Color.White.copy(alpha = 0.9f))
+                Text("Opens with your Haven password", style = MaterialTheme.typography.bodyLarge, color = Color.White.copy(alpha = 0.9f))
             }
             Spacer(Modifier.width(12.dp))
             HeroIcon(Icons.Filled.Shield)

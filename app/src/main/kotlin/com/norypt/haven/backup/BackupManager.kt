@@ -127,7 +127,7 @@ class BackupManager(
     }
 
     suspend fun export(passphrase: CharArray, includePasswords: Boolean, params: Argon2Params): ExportResult = withContext(Dispatchers.IO) {
-        if (includePasswords && session.passwordsOrNull() == null) return@withContext ExportResult.Failure("Unlock the password keeper first to include it.")
+        if (includePasswords && session.passwordsOrNull() == null) return@withContext ExportResult.Failure("Unlock the Vault first to include it.")
         session.beginBackupOperation(restore = false)
         val pw = try { PasswordNormalizer.toBytes(passphrase) } catch (e: IllegalArgumentException) { session.endBackupOperation(); return@withContext ExportResult.Failure("Enter a backup passphrase.") }
         try {
@@ -278,7 +278,7 @@ class BackupManager(
             } catch (e: CancellationException) {
                 throw e // an IllegalStateException too; never mistaken for a locked keeper
             } catch (e: IllegalStateException) {
-                return@withContext RestoreResult.Failure("The password keeper was locked during the restore. Nothing was changed.")
+                return@withContext RestoreResult.Failure("The Vault was locked during the restore. Nothing was changed.")
             } catch (e: IOException) {
                 return@withContext RestoreResult.Failure("Could not read the file, or could not store its photos. Nothing was changed.")
             }
@@ -308,7 +308,7 @@ class BackupManager(
                     val stage = staging
                     val p = session.passwordsOrNull()
                     if (p == null || (format == 2 && stage == null)) {
-                        return@withContext RestoreResult.Failure("Reminders, tasks and notes were restored, but the password keeper is locked. Unlock it and restore again to bring back passwords and photos.")
+                        return@withContext RestoreResult.Failure("Reminders, tasks and notes were restored, but the Vault is locked. Unlock it and restore again to bring back passwords and photos.")
                     }
                     val replacePasswords: suspend (PasswordDatabase) -> Unit = { db ->
                         db.entries().deleteEverything(); db.folders().deleteEverything()
@@ -363,7 +363,7 @@ class BackupManager(
         /** What the user is told when an export failed with [t]. */
         internal fun exportFailureMessage(t: Throwable, includePasswords: Boolean): String = when {
             t is PhotoVault.DamagedPhotoException -> DAMAGED_PHOTO
-            includePasswords && t is IllegalStateException -> "The password keeper was locked during the backup. No file was kept."
+            includePasswords && t is IllegalStateException -> "The Vault was locked during the backup. No file was kept."
             else -> "Backup failed: ${t.javaClass.simpleName}"
         }
         const val DAMAGED_PHOTO = "One hidden photo is damaged and could not be read. Delete it from the Vault (it shows no preview) and try again."

@@ -152,9 +152,9 @@ fun SecuritySettingsScreen(nav: NavHostController) {
                 if (vm.keeperUnlocked) {
                     DangerButton("Delete all passwords and folders", enabled = !vm.busy) { vm.begin(SecurityViewModel.Action.DELETE_PASSWORDS) }
                 } else {
-                    Text("Unlock the password keeper first to delete passwords and folders.", style = MaterialTheme.typography.bodyMedium)
+                    Text("Unlock the Vault first to delete passwords and folders.", style = MaterialTheme.typography.bodyMedium)
                     Spacer(Modifier.height(4.dp))
-                    OutlinedButton(onClick = { nav.navigate(Routes.PASSWORD_UNLOCK) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Unlock the password keeper") }
+                    OutlinedButton(onClick = { nav.navigate(Routes.PASSWORD_UNLOCK) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Unlock the Vault") }
                 }
                 Spacer(Modifier.height(16.dp))
                 Text(
@@ -221,7 +221,7 @@ fun SecuritySettingsScreen(nav: NavHostController) {
             )
             SecurityViewModel.Action.DELETE_PASSWORDS -> ConfirmDialog(
                 title = "Delete all passwords and folders?",
-                body = "Every saved login and every folder in the password keeper will be deleted. Reminders and tasks are not affected.",
+                body = "Every saved login and every password folder will be deleted. Photos, reminders, tasks and notes are not affected.",
                 confirmLabel = "Delete all passwords", onConfirm = vm::confirm, onDismiss = vm::cancel,
             )
             SecurityViewModel.Action.ERASE_ALL -> EraseDialog(vm)

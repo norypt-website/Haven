@@ -127,7 +127,7 @@ class PasswordUnlockViewModel(private val session: VaultSession, private val thr
             val result = try {
                 retryWithDeviceAuth(deviceAuth) { withContext(NonCancellable) { session.unlockPasswords(password) } }
             } catch (e: Exception) {
-                UnlockResult.Failed("Could not open the keeper (${e.javaClass.simpleName}).")
+                UnlockResult.Failed("Could not open the Vault (${e.javaClass.simpleName}).")
             } finally {
                 password.fill('\u0000')
             }

@@ -267,7 +267,7 @@ internal fun PasswordsContent(nav: NavHostController, header: @Composable () -> 
         )
         ListDialog.DeleteSelected -> ConfirmDialog(
             title = if (selected.size == 1) "Delete 1 selected entry" else "Delete ${selected.size} selected entries",
-            body = "The selected entries are removed from the password keeper. This cannot be undone.",
+            body = "The selected entries are removed from the Vault. This cannot be undone.",
             confirmLabel = "Delete",
             onConfirm = {
                 val n = selected.size

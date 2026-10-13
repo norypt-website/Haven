@@ -134,7 +134,7 @@ fun PasswordUnlockScreen(nav: NavHostController) {
         vm.unlock(chars, deviceAuth)
     }
 
-    Scaffold(topBar = { HavenTopBar("Password keeper", onBack = { leave() }) }) { padding ->
+    Scaffold(topBar = { HavenTopBar("Vault", onBack = { leave() }) }) { padding ->
         Column(
             Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(ScreenPadding).padding(top = 28.dp, bottom = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -149,7 +149,7 @@ fun PasswordUnlockScreen(nav: NavHostController) {
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                "The password keeper uses its own key and opens separately from reminders.",
+                "The Vault (passwords and photos) uses its own key and opens separately from reminders, tasks and notes.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -181,7 +181,7 @@ fun PasswordUnlockScreen(nav: NavHostController) {
                 } else {
                     Icon(Icons.Filled.LockOpen, contentDescription = null, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(10.dp))
-                    Text("Open keeper", style = MaterialTheme.typography.labelLarge.copy(fontSize = 16.sp, fontWeight = FontWeight.SemiBold))
+                    Text("Open Vault", style = MaterialTheme.typography.labelLarge.copy(fontSize = 16.sp, fontWeight = FontWeight.SemiBold))
                 }
             }
             Spacer(Modifier.height(28.dp))
@@ -231,7 +231,7 @@ private fun KeeperFacts() {
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-            KeeperFact(Icons.Filled.Key, "Its own key, separate from reminders")
+            KeeperFact(Icons.Filled.Key, "Its own key, separate from reminders, tasks and notes")
             HorizontalDivider(Modifier.padding(start = 34.dp), color = MaterialTheme.colorScheme.outlineVariant)
             KeeperFact(Icons.Filled.CloudOff, "No network access. Nothing is sent anywhere.")
             HorizontalDivider(Modifier.padding(start = 34.dp), color = MaterialTheme.colorScheme.outlineVariant)

@@ -393,7 +393,7 @@ class SecurityViewModel(private val container: AppContainer) : ViewModel() {
                         notice = "All tasks and lists deleted."
                     }
                     Action.DELETE_PASSWORDS -> {
-                        if (container.session.passwordsOrNull() == null) { notice = "Unlock the password keeper first."; return@launch }
+                        if (container.session.passwordsOrNull() == null) { notice = "Unlock the Vault first."; return@launch }
                         container.passwords.deleteAll()
                         notice = "All passwords and folders deleted."
                     }
@@ -562,7 +562,7 @@ class BackupViewModel(private val container: AppContainer) : ViewModel() {
         when {
             exportPassphrase.length < 8 -> { exportMessage = "Use a backup passphrase of at least 8 characters."; return }
             exportPassphrase != exportConfirm -> { exportMessage = "The passphrase entries do not match."; return }
-            includePasswords && !keeperUnlocked -> { exportMessage = "Unlock the password keeper first to include it."; return }
+            includePasswords && !keeperUnlocked -> { exportMessage = "Unlock the Vault first to include it."; return }
         }
         exporting = true
         viewModelScope.launch {
@@ -614,7 +614,7 @@ class BackupViewModel(private val container: AppContainer) : ViewModel() {
         restoreMessage = null
         if (restoreUri == null || inspection == null) return
         if (restorePassphrase.isEmpty()) { restoreMessage = "Enter the backup passphrase."; return }
-        if (restorePasswords && !keeperUnlocked) { restoreMessage = "Unlock the password keeper first to restore passwords."; return }
+        if (restorePasswords && !keeperUnlocked) { restoreMessage = "Unlock the Vault first to restore it."; return }
         val key = try { BackupKey.parse(restoreKeyText) } catch (e: IllegalArgumentException) { restoreMessage = "The backup key is not valid. Check for typos."; return }
         key.destroy()
         showRestoreConfirm = true

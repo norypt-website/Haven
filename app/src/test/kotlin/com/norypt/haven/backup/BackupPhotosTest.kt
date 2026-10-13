@@ -238,7 +238,7 @@ class BackupPhotosTest {
             .isEqualTo("One hidden photo is damaged and could not be read. Delete it from the Vault (it shows no preview) and try again.")
         // A keeper that closed mid-export is still told apart.
         assertThat(BackupManager.exportFailureMessage(IllegalStateException("keeper closed"), includePasswords = true))
-            .isEqualTo("The password keeper was locked during the backup. No file was kept.")
+            .isEqualTo("The Vault was locked during the backup. No file was kept.")
     }
 
     private suspend fun writeFile(payloadFormat: Int, body: (OutputStream) -> Unit): ByteArray = ByteArrayOutputStream().also { out ->
