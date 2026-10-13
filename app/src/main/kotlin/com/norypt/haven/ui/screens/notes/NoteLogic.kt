@@ -2,8 +2,19 @@ package com.norypt.haven.ui.screens.notes
 
 /** Pure helpers of the notes screens (no Android types, unit tested). */
 object NoteLogic {
+    private val LINE_BREAKS = Regex("\\s*[\\r\\n]+\\s*")
+
+    /** A title lives on one line: line breaks (typed, pasted) become single spaces. Surrounding spaces stay. */
+    fun singleLine(title: String): String = LINE_BREAKS.replace(title, " ")
+
+    /** The title as stored: on one line and trimmed. */
+    fun cleanTitle(title: String): String = singleLine(title).trim()
+
+    /** The first non-blank line of [title] (older notes may hold several), else the first body line, else "Untitled". */
     fun displayTitle(title: String, body: String): String =
-        title.trim().ifEmpty { body.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() } ?: "Untitled" }
+        firstLine(title).ifEmpty { body.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() } ?: "Untitled" }
+
+    private fun firstLine(text: String): String = text.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() } ?: ""
 
     fun preview(title: String, body: String): String {
         if (title.isNotBlank()) return body.trim()

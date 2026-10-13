@@ -139,7 +139,7 @@ class NoteEditViewModel(private val deps: NoteEditDeps, initialId: String?) : Vi
         }
     }
 
-    fun onTitle(v: String) { title.value = v; schedule() }
+    fun onTitle(v: String) { title.value = NoteLogic.singleLine(v); schedule() }
     fun onBody(v: String) { body.value = v; schedule() }
 
     private fun schedule() {

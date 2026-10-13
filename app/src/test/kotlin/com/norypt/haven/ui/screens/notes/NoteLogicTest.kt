@@ -7,6 +7,18 @@ class NoteLogicTest {
     @Test fun titleWins() { assertThat(NoteLogic.displayTitle(" Groceries ", "milk")).isEqualTo("Groceries") }
     @Test fun untitledUsesFirstBodyLine() { assertThat(NoteLogic.displayTitle("", "\n  first line \nsecond")).isEqualTo("first line") }
     @Test fun emptyNoteIsUntitled() { assertThat(NoteLogic.displayTitle(" ", " ")).isEqualTo("Untitled") }
+    @Test fun displayTitleUsesOnlyTheFirstLineOfAnOldMultiLineTitle() {
+        assertThat(NoteLogic.displayTitle("Groceries\nMilk and bread", "x")).isEqualTo("Groceries")
+        assertThat(NoteLogic.displayTitle("\n  \r\n Plan \nmore", "x")).isEqualTo("Plan")
+    }
+    @Test fun aTitleOfOnlyLineBreaksFallsBackToTheBody() { assertThat(NoteLogic.displayTitle("\n\r\n", "first\nsecond")).isEqualTo("first") }
+    @Test fun cleanTitleKeepsOneLine() {
+        assertThat(NoteLogic.cleanTitle("Groceries\nMilk")).isEqualTo("Groceries Milk")
+        assertThat(NoteLogic.cleanTitle("  A\r\n\r\nB \n")).isEqualTo("A B")
+        assertThat(NoteLogic.cleanTitle("Plain title")).isEqualTo("Plain title")
+        assertThat(NoteLogic.cleanTitle("\n")).isEmpty()
+    }
+    @Test fun singleLineKeepsTypedSpaces() { assertThat(NoteLogic.singleLine("Hello ")).isEqualTo("Hello ") }
     @Test fun previewSkipsTheLineUsedAsTitle() { assertThat(NoteLogic.preview("", "first\nsecond\nthird")).isEqualTo("second\nthird") }
     @Test fun previewWithTitleIsTheBody() { assertThat(NoteLogic.preview("T", "  body ")).isEqualTo("body") }
     @Test fun newBlankNoteIsNeverStored() { assertThat(NoteLogic.shouldStore(isNew = true, title = " ", body = "\n")).isFalse() }

@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -51,6 +52,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -113,6 +119,7 @@ fun NoteEditScreen(nav: NavHostController, id: String?) {
     // Leaving the app saves at once, well before any auto-lock closes the vault.
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { container.appScope.launch { vm.saveNow() } }
     val focus = remember { FocusRequester() }
+    val bodyFocus = remember { FocusRequester() }
     LaunchedEffect(loaded) { if (loaded && id == null) runCatching { focus.requestFocus() } }
 
     Scaffold(
@@ -172,7 +179,15 @@ fun NoteEditScreen(nav: NavHostController, id: String?) {
                 textStyle = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground),
                 cursorBrush = SolidColor(accent),
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Next),
-                modifier = Modifier.fillMaxWidth().focusRequester(focus),
+                keyboardActions = KeyboardActions(onNext = { runCatching { bodyFocus.requestFocus() } }),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().focusRequester(focus).onPreviewKeyEvent {
+                    // A hardware Enter moves to the body instead of inserting a line break.
+                    if (it.key == Key.Enter || it.key == Key.NumPadEnter) {
+                        if (it.type == KeyEventType.KeyDown) runCatching { bodyFocus.requestFocus() }
+                        true
+                    } else false
+                },
                 decorationBox = { inner ->
                     if (title.isEmpty()) Text("Title", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold), color = placeholder)
                     inner()
@@ -185,7 +200,7 @@ fun NoteEditScreen(nav: NavHostController, id: String?) {
                 textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onBackground, lineHeight = 26.sp),
                 cursorBrush = SolidColor(accent),
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-                modifier = Modifier.fillMaxWidth().heightIn(min = 320.dp).padding(bottom = 48.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 320.dp).padding(bottom = 48.dp).focusRequester(bodyFocus),
                 decorationBox = { inner ->
                     if (body.isEmpty()) Text("Start writing…", style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 26.sp), color = placeholder)
                     inner()
