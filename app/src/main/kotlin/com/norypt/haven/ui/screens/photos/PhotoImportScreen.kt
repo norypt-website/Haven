@@ -201,7 +201,7 @@ private fun ImportContent(nav: NavHostController) {
             ) {
                 item(key = "intro", span = { GridItemSpan(maxLineSpan) }) {
                     Text(
-                        "Photos Haven may see. Copies already in a cloud backup are not removed by Haven.",
+                        "Photos Haven may see. Location data is removed from hidden photos. Copies already in a cloud backup are not removed by Haven.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(start = 4.dp, end = 4.dp, top = 4.dp, bottom = 8.dp),
@@ -282,6 +282,14 @@ private fun ImportProgress(p: PhotoImportViewModel.Progress, canDelete: Boolean,
             progress = { if (p.total == 0) 1f else p.done / p.total.toFloat() },
             modifier = Modifier.fillMaxWidth().height(8.dp),
             strokeCap = StrokeCap.Round,
+        )
+        Spacer(Modifier.height(12.dp))
+        // Android hands Haven photos without their GPS position; the original goes with it when deleted.
+        Text(
+            "Location data is removed from hidden photos.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
         )
         Spacer(Modifier.height(24.dp))
         val refused = p.refused.groupingBy { it }.eachCount()
